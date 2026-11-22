@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "short_name": "Dev English",
+  "name": "Dev English Gym",
+  "description": "Inglês de trabalho para desenvolvedores: aulas curtas, treino e conversa com IA.",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "logo192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "logo512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ],
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#7B4DFF",
+  "background_color": "#F6F2FF"
+}
