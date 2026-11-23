@@ -1,3 +1,4 @@
+import { ADV_PRON } from './pron-advanced'
 // How each sentence sounds in US English, spelled the way a Brazilian reads Portuguese.
 // UPPERCASE = stressed syllable · â = neutral vowel (schwa) · é = open "e" (as in "pé"; also the "a" of "cat")
 // ii / uu = long vowels · dh = "th" of "the" (voiced) · th = "th" of "think" (tongue between the teeth)
@@ -258,5 +259,5 @@ export const PRON: Record<string, string> = {
 
 export function pronOf(text: string): string {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim()
-  return PRON[t] ?? ''
+  return PRON[t] ?? ADV_PRON[t] ?? ''
 }

@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server"
 import { v } from "convex/values"
 import { getAuthUserId } from "@convex-dev/auth/server"
+import { decrypt, encrypt, lookupHash } from "./crypto"
 
 const DAY = 24 * 60 * 60 * 1000
 const MAX_PER_USER = 500
@@ -18,7 +19,15 @@ export const due = query({
       .take(30)
     return {
       ok: true as const,
-      items: items.map((m) => ({ id: m._id, wrong: m.wrong, better: m.better, tip: m.tip, due: m.due })),
+      items: await Promise.all(
+        items.map(async (m) => ({
+          id: m._id,
+          wrong: await decrypt(m.wrong),
+          better: await decrypt(m.better),
+          tip: await decrypt(m.tip),
+          due: m.due,
+        })),
+      ),
     }
   },
 })
@@ -32,9 +41,10 @@ export const add = mutation({
     const better = args.better.trim().slice(0, 600)
     const tip = args.tip.trim().slice(0, 300)
     if (!wrong || !better) return { ok: false as const, code: "BAD_INPUT" as const }
+    const bh = await lookupHash(better)
     const existing = await ctx.db
       .query("mistakes")
-      .withIndex("by_user_better", (q) => q.eq("userId", userId).eq("better", better))
+      .withIndex("by_user_bh", (q) => q.eq("userId", userId).eq("bh", bh))
       .first()
     if (existing) return { ok: true as const }
     const count = (
@@ -47,9 +57,10 @@ export const add = mutation({
     // Reviewable right away; correct answers then push it out to 1, 2.5, 6+ days.
     await ctx.db.insert("mistakes", {
       userId,
-      wrong,
-      better,
-      tip,
+      wrong: await encrypt(wrong),
+      better: await encrypt(better),
+      tip: await encrypt(tip),
+      bh,
       due: Date.now(),
       interval: 0,
       reps: 0,

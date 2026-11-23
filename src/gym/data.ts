@@ -1,3 +1,5 @@
+import { USA_LESSONS, USA_UNITS, USA_LV } from './data-usa'
+import { ADV_LESSONS, ADV_UNITS, ADV_LESSON_LV, ADV_UNIT_LV } from './data-advanced'
 // Content for Dev English Gym: phrase units, AI scenarios and grammar lessons.
 export const UNITS: any[] =[
 {id:'standup',t:'Daily standup',s:'Contar o que fez e o que vai fazer',p:[
@@ -216,8 +218,18 @@ export const LEVELS: any[] = [
   {t:'Básico',tag:'A2',s:'Frases do dia a dia de dev'},
   {t:'Intermediário',tag:'B1',s:'Entrevista, experiência e escrita'},
   {t:'Avançado',tag:'B2',s:'Negociar, explicar e decidir'},
+  {t:'Fluente',tag:'C1',s:'Liderar, dar feedback e influenciar'},
+  {t:'Proficiente',tag:'C2',s:'Nuance, estratégia e palco'},
+  // Always open: a crash review for people about to travel or move to the US.
+  {t:'Intensivo EUA',tag:'EUA',s:'Vai para os EUA? Revisão rápida com muitas questões',free:true},
 ]
+UNITS.push(...ADV_UNITS, ...USA_UNITS)
+LESSONS.push(...ADV_LESSONS, ...USA_LESSONS)
 const LESSON_LV: Record<string, number> = {past:0,present:0,future:0,polite:0,questions:0,perfect:1,brmistakes:1,stories:1,writing:1,sounds:1,conditionals:2,modals:2,passive:2,phrasal:2,tradeoffs:2}
 const UNIT_LV: Record<string, number> = {standup:0,help:0,review:0,meet:1,bugs:1,intro:1,story:2,offer:2,pushback:2,design:2}
+Object.assign(LESSON_LV, ADV_LESSON_LV)
+Object.assign(UNIT_LV, ADV_UNIT_LV)
+for (const l of USA_LESSONS) LESSON_LV[l.id] = USA_LV
+for (const u of USA_UNITS) UNIT_LV[u.id] = USA_LV
 for (const l of LESSONS) l.lv = LESSON_LV[l.id] ?? 0
 for (const u of UNITS) u.lv = UNIT_LV[u.id] ?? 0

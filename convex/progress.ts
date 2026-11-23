@@ -96,7 +96,7 @@ export const save = mutation({
       freezes: clampInt(args.freezes, 2),
       days: (args.days ?? []).filter((d) => DAY_RE.test(d)).slice(-60),
       badges: (args.badges ?? []).filter((b) => ID_RE.test(b)).slice(0, 50),
-      lvl: clampInt(args.lvl, 2),
+      lvl: clampInt(args.lvl, 5),
       chats: clampInt(args.chats, 10_000_000),
       reviews: clampInt(args.reviews, 10_000_000),
       goals: clampInt(args.goals, 100_000),

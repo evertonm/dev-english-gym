@@ -11,7 +11,7 @@
 <main>
 <a class="back" href="/">← Voltar para o Dev English</a>
 <h1>Política de privacidade</h1>
-<p class="updated">Última atualização: 23 de novembro de 2026</p>
+<p class="updated">Última atualização: 23 de novembro de 2026 (v2)</p>
 
 <p>Esta política explica quais dados o <b>Dev English</b> (dev-english-br.vercel.app) coleta, para que usa, com quem compartilha e quais são os seus direitos, de acordo com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018, "LGPD").</p>
 
@@ -20,9 +20,9 @@
 
 <h2>2. Quais dados coletamos</h2>
 <ul>
-<li><b>Conta:</b> e-mail e senha (guardada só como hash criptográfico, nunca em texto). Se você entrar com Google ou LinkedIn, recebemos o e-mail, o nome e a foto de perfil que esses serviços compartilham.</li>
+<li><b>Conta:</b> e-mail e senha (guardada só como hash criptográfico, nunca em texto). Se você entrar com Google ou LinkedIn, guardamos só o e-mail confirmado por eles; nome e foto de perfil são descartados.</li>
 <li><b>Progresso:</b> XP, ofensiva, estrelas, casas do tabuleiro, conquistas, meta diária e dias em que você praticou.</li>
-<li><b>Erros para revisão:</b> frases suas que a IA corrigiu, para você revisar depois.</li>
+<li><b>Erros para revisão:</b> frases suas que a IA corrigiu, para você revisar depois. Ficam <b>criptografadas</b> no banco (AES-256).</li>
 <li><b>Uso da IA:</b> quantas mensagens e transcrições de voz você usou por dia, para aplicar os limites.</li>
 <li><b>Métricas de uso:</b> eventos simples, como abrir o app ou concluir uma aula, ligados a um identificador aleatório do navegador. Não usamos cookies de rastreamento nem ferramentas de anúncio.</li>
 <li><b>No seu aparelho:</b> o app guarda seu progresso, o tema e a preferência de som no armazenamento local do navegador.</li>
@@ -60,7 +60,7 @@
 <p>Você também pode reclamar à Autoridade Nacional de Proteção de Dados (ANPD).</p>
 
 <h2>7. Segurança</h2>
-<p>A comunicação é sempre criptografada (HTTPS), as senhas são guardadas só como hash e o acesso ao banco é restrito. Nenhum sistema é 100% seguro; se houver um incidente relevante, avisaremos você e a ANPD.</p>
+<p>A comunicação é sempre criptografada (HTTPS). Tudo o que você escreve e fica salvo é criptografado com AES-256-GCM antes de ir para o banco, com uma chave guardada separadamente; uma cópia do banco sozinha não revela o conteúdo. As senhas são guardadas só como hash e o acesso ao banco é restrito. Nenhum sistema é 100% seguro; se houver um incidente relevante, avisaremos você e a ANPD.</p>
 
 <h2>8. Menores de idade</h2>
 <p>O Dev English é voltado a profissionais e não se destina a menores de 18 anos.</p>

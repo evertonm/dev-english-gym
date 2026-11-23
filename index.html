@@ -18,9 +18,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@600;700;800&display=swap" />
+    <style>
+      /* Themed background before the app loads, so a slow start is never a white flash. */
+      html,body{margin:0;background:#f6f2ff}
+      @media (prefers-color-scheme:dark){html,body{background:#151126}}
+      .crash{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;font:16px/1.5 Nunito,system-ui,sans-serif;color:#2b1b5a}
+      @media (prefers-color-scheme:dark){.crash{color:#f6f2ff}}
+      .crash-t{font-size:22px;font-weight:800;margin:0}
+      .crash button{margin-top:10px;font:inherit;font-weight:800;padding:12px 22px;border:0;border-radius:14px;background:#7b4dff;color:#fff;cursor:pointer}
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // If the app script never starts (e.g. an old cached page after an update), offer a reload.
+      setTimeout(function () {
+        var r = document.getElementById('root')
+        if (r && !r.firstChild) r.innerHTML = '<div class="crash"><p class="crash-t">Carregando demorou demais.</p><p>Toque para tentar de novo.</p><button onclick="location.reload()">Recarregar</button></div>'
+      }, 10000)
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

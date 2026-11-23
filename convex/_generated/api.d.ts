@@ -10,14 +10,18 @@
 
 import type * as ResendOTP from "../ResendOTP.js";
 import type * as account from "../account.js";
+import type * as admin from "../admin.js";
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as auth from "../auth.js";
+import type * as crypto from "../crypto.js";
 import type * as gymPrompts from "../gymPrompts.js";
 import type * as http from "../http.js";
+import type * as migrations from "../migrations.js";
 import type * as mistakes from "../mistakes.js";
 import type * as perks from "../perks.js";
 import type * as progress from "../progress.js";
+import type * as tts from "../tts.js";
 
 import type {
   ApiFromModules,
@@ -28,14 +32,18 @@ import type {
 declare const fullApi: ApiFromModules<{
   ResendOTP: typeof ResendOTP;
   account: typeof account;
+  admin: typeof admin;
   ai: typeof ai;
   analytics: typeof analytics;
   auth: typeof auth;
+  crypto: typeof crypto;
   gymPrompts: typeof gymPrompts;
   http: typeof http;
+  migrations: typeof migrations;
   mistakes: typeof mistakes;
   perks: typeof perks;
   progress: typeof progress;
+  tts: typeof tts;
 }>;
 
 /**

@@ -1,3 +1,5 @@
+import { USA_WHY } from './data-usa'
+import { ADV_WHY } from './data-advanced'
 // Short "why" for each lesson question (same order as LESSONS[].q). Shown under right/wrong feedback.
 export const WHY: Record<string, string[]> = {
   past: [
@@ -105,4 +107,6 @@ export const WHY: Record<string, string[]> = {
     "Given = dado/considerando: Given our deadline = considerando o prazo.",
     "Depend ON, sempre. Nunca \"depend of\".",
   ],
+  ...ADV_WHY,
+  ...USA_WHY,
 }

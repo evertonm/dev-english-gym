@@ -5,6 +5,7 @@ import { getAuthUserId } from "@convex-dev/auth/server"
 import type { Id } from "./_generated/dataModel"
 import { SCENARIO_ROLES, LESSON_TASKS } from "./gymPrompts"
 import { logEvent } from "./analytics"
+import { isAdmin } from "./admin"
 import { SCENARIO_MIN_XP, aiLimitFor, nextAiTier, rankName, utcDay } from "./perks"
 
 // Whole-app AI calls per day. Keep it under the Gemini project quota (about 500/day for Flash-Lite on the
@@ -41,13 +42,14 @@ export const consume = internalMutation({
   args: { userId: v.id("users"), scenario: v.optional(v.string()) },
   handler: async (ctx, { userId, scenario }): Promise<"OK" | "LIMIT" | "BUSY" | "LOCKED"> => {
     const xp = await userXp(ctx, userId)
-    if (scenario && xp < (SCENARIO_MIN_XP[scenario] ?? 0)) return "LOCKED"
+    const admin = await isAdmin(ctx, userId)
+    if (!admin && scenario && xp < (SCENARIO_MIN_XP[scenario] ?? 0)) return "LOCKED"
     const day = utcDay()
     const row = await ctx.db
       .query("aiUsage")
       .withIndex("by_user_day", (q) => q.eq("userId", userId).eq("day", day))
       .unique()
-    if (row && row.count >= aiLimitFor(xp)) {
+    if (!admin && row && row.count >= aiLimitFor(xp)) {
       await logEvent(ctx, "ai_limit", userId)
       return "LIMIT"
     }
@@ -55,7 +57,7 @@ export const consume = internalMutation({
       .query("aiGlobal")
       .withIndex("by_day", (q) => q.eq("day", day))
       .unique()
-    if (global && global.count >= GLOBAL_LIMIT) return "BUSY"
+    if (!admin && global && global.count >= GLOBAL_LIMIT) return "BUSY"
     if (row) await ctx.db.patch(row._id, { count: row.count + 1 })
     else await ctx.db.insert("aiUsage", { userId, day, count: 1 })
     if (global) await ctx.db.patch(global._id, { count: global.count + 1 })
@@ -100,16 +102,58 @@ export const quota = query({
       limit: aiLimitFor(xp),
       rank: rankName(xp),
       next: nextAiTier(xp),
+      admin: await isAdmin(ctx, userId),
     }
   },
 })
 
-function chatInstructions(role: string): string {
+// Conversation difficulty by CEFR level (the learner's open level, 0 = A2 … 4 = C2).
+// Higher levels get longer, richer turns and a bigger output budget.
+const LEVEL_STYLE: { cefr: string; style: string; tokens: number }[] = [
+  {
+    cefr: "A2 (basic)",
+    style:
+      "Use simple, common words and short sentences. Your line: at most 2 short sentences, ending with one easy question. Ask concrete questions (what, when, where).",
+    tokens: 400,
+  },
+  {
+    cefr: "B1 (intermediate)",
+    style:
+      "Use everyday work vocabulary at a natural pace. Your line: 2-3 sentences, ending with one question. Ask follow-ups that need a short explanation (how, why).",
+    tokens: 500,
+  },
+  {
+    cefr: "B2 (upper intermediate)",
+    style:
+      "Speak naturally, with some common idioms and phrasal verbs. Your line: up to 3 sentences, ending with one open question. Push for details, examples and reasons; politely challenge vague answers.",
+    tokens: 600,
+  },
+  {
+    cefr: "C1 (advanced)",
+    style:
+      "Speak like a native colleague at normal speed: idioms, phrasal verbs, nuance and some hedging. Your line: up to 4 sentences, ending with one demanding open question. Introduce realistic complications, ask the learner to justify trade-offs and defend positions. In the coaching, also point out unnatural phrasing, register and word choice, not only grammar.",
+    tokens: 800,
+  },
+  {
+    cefr: "C2 (proficient)",
+    style:
+      "Be a sharp, fast, demanding native speaker: sophisticated vocabulary, idioms, irony, curveball questions and pushback, as in a tough senior interview or executive meeting. Your line: up to 5 sentences, ending with one hard question that requires nuanced argument. In the coaching, hold the learner to near-native standards: collocations, register, concision and persuasiveness.",
+    tokens: 1000,
+  },
+]
+const levelOf = (n?: number) => LEVEL_STYLE[Math.max(0, Math.min(LEVEL_STYLE.length - 1, Math.floor(n ?? 0)))]
+
+function chatInstructions(role: string, level?: number): string {
+  const L = levelOf(level)
   return (
     "You are " +
     role +
-    ". You are talking with a Brazilian software developer whose English is basic (A2) and who is practising for international remote jobs. Stay in character. Use simple, common words. Your line: at most 2 short sentences, ending with one question. Also coach the learner on their LAST message. Answer ONLY with one JSON object, no markdown: " +
-    '{"reply":"your in-character line in English","pt":"Brazilian Portuguese translation of reply","better":"the learner\'s last message rewritten in correct, natural English; empty string if there was no learner message yet or it was already correct","tip":"one short coaching note in Brazilian Portuguese, max 15 words; empty string if there was no learner message yet","hint":"a simple example answer in English that the learner could give to your question"}. ' +
+    ". You are talking with a Brazilian software developer whose English level is " +
+    L.cefr +
+    " and who is practising for international jobs. Stay in character. " +
+    L.style +
+    " Also coach the learner on their LAST message. Answer ONLY with one JSON object, no markdown: " +
+    '{"reply":"your in-character line in English","pt":"Brazilian Portuguese translation of reply","better":"the learner\'s last message rewritten in correct, natural English for this level; empty string if there was no learner message yet or it was already correct","tip":"one short coaching note in Brazilian Portuguese, max 20 words; empty string if there was no learner message yet","hint":"an example answer in English, at this level, that the learner could give to your question"}. ' +
     "Keep the conversation moving like a real one: NEVER repeat a question you already asked or ask the same thing in other words; " +
     "use what the learner already told you and move to a new topic of this situation each turn. " +
     "If the learner did not understand, rephrase more simply instead of changing the subject. " +
@@ -125,7 +169,7 @@ function chatInstructions(role: string): string {
 const MODELS = [process.env.GEMINI_MODEL || "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
 const RETRYABLE = new Set([429, 500, 502, 503, 504])
 
-async function callGemini(model: string, key: string, system: string, messages: Msg[], ms: number): Promise<Response> {
+async function callGemini(model: string, key: string, system: string, messages: Msg[], ms: number, maxTokens = 400): Promise<Response> {
   // A stuck request counts as a failure so the next model gets its turn.
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
@@ -141,7 +185,7 @@ async function callGemini(model: string, key: string, system: string, messages: 
           role: m.role === "assistant" ? "model" : "user",
           parts: [{ text: m.content }],
         })),
-        generationConfig: { maxOutputTokens: 400, temperature: 0.7, responseMimeType: "application/json" },
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7, responseMimeType: "application/json" },
       }),
       signal: ctrl.signal,
     },
@@ -156,7 +200,7 @@ async function callGemini(model: string, key: string, system: string, messages: 
 // OpenAI is the main model (fast and stable); Gemini is the backup when OpenAI fails.
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini"
 
-async function callOpenAI(key: string, system: string, messages: Msg[], ms: number): Promise<string | null> {
+async function callOpenAI(key: string, system: string, messages: Msg[], ms: number, maxTokens = 400): Promise<string | null> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   try {
@@ -167,7 +211,7 @@ async function callOpenAI(key: string, system: string, messages: Msg[], ms: numb
         model: OPENAI_MODEL,
         messages: [{ role: "system", content: system }, ...messages.map((m) => ({ role: m.role, content: m.content }))],
         response_format: { type: "json_object" },
-        max_completion_tokens: 400,
+        max_completion_tokens: maxTokens,
         temperature: 0.7,
       }),
       signal: ctrl.signal,
@@ -186,11 +230,11 @@ async function callOpenAI(key: string, system: string, messages: Msg[], ms: numb
   }
 }
 
-async function runLlm(system: string, messages: Msg[]): Promise<string> {
+async function runLlm(system: string, messages: Msg[], maxTokens = 400): Promise<string> {
   const deadline = Date.now() + 25_000 // the learner waits at most ~25s before seeing "try again"
   const openaiKey = process.env.OPENAI_API_KEY
   if (openaiKey) {
-    const text = await callOpenAI(openaiKey, system, messages, 12_000)
+    const text = await callOpenAI(openaiKey, system, messages, 12_000 + (maxTokens - 400) * 10, maxTokens)
     if (text) return text
   }
   const key = process.env.GEMINI_API_KEY
@@ -202,7 +246,7 @@ async function runLlm(system: string, messages: Msg[]): Promise<string> {
     if (wait) await new Promise((r) => setTimeout(r, wait))
     const left = deadline - Date.now()
     if (left < 2_000) break
-    const res = await callGemini(model, key, system, messages, Math.min(12_000, left))
+    const res = await callGemini(model, key, system, messages, Math.min(12_000, left), maxTokens)
     if (res.ok) {
       const data = (await res.json()) as {
         candidates?: { content?: { parts?: { text?: string }[] } }[]
@@ -235,6 +279,7 @@ async function gate(ctx: GateCtx, scenario?: string): Promise<{ blocked: AiResul
 export const chat = action({
   args: {
     scenario: v.string(),
+    level: v.optional(v.number()),
     history: v.array(
       v.object({ role: v.union(v.literal("user"), v.literal("assistant")), content: v.string() }),
     ),
@@ -254,7 +299,7 @@ export const chat = action({
     // Gemini needs the conversation to start with a user turn.
     const messages: Msg[] = [{ role: "user", content: "Begin the conversation now." }, ...history]
     try {
-      const text = await runLlm(chatInstructions(role), messages)
+      const text = await runLlm(chatInstructions(role, args.level), messages, levelOf(args.level).tokens)
       if (text) return { ok: true, text }
     } catch (e) {
       console.error(e)
@@ -305,7 +350,7 @@ export const sttConsume = internalMutation({
       .withIndex("by_user_day", (q) => q.eq("userId", userId).eq("day", day))
       .unique()
     const used = row?.stt ?? 0
-    if (used >= STT_DAILY_LIMIT) return false
+    if (used >= STT_DAILY_LIMIT && !(await isAdmin(ctx, userId))) return false
     if (row) await ctx.db.patch(row._id, { stt: used + 1 })
     else await ctx.db.insert("aiUsage", { userId, day, count: 0, stt: 1 })
     await logEvent(ctx, "stt", userId)

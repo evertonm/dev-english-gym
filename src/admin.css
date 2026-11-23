@@ -1,0 +1,60 @@
+/* Admin dashboard: full-screen, uses the app theme tokens (light/dark). */
+.gym .adm{position:fixed;inset:0;z-index:80;overflow-y:auto;background:hsl(var(--bg));color:hsl(var(--ink));padding:16px 14px 40px;font-family:inherit}
+.gym .adm *{box-sizing:border-box}
+.gym .adm-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;max-width:1200px;margin:0 auto 14px}
+.gym .adm-head h1{margin:0;font-family:var(--display);font-size:28px;line-height:1.1}
+.gym .adm-head p{margin:4px 0 0;color:hsl(var(--muted));font-size:13px}
+.gym .adm-close{flex:none;font:inherit;font-weight:800;padding:10px 16px;border-radius:12px;border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--ink));cursor:pointer}
+.gym .adm-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:1200px;margin:0 auto 12px}
+.gym .adm-tile{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:16px;background:hsl(var(--surface));border:1px solid hsl(var(--line))}
+.gym .adm-tl{font-size:12.5px;color:hsl(var(--muted));font-weight:700}
+.gym .adm-tile b{font-family:var(--display);font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
+.gym .adm-tile small{font-size:12px;color:hsl(var(--muted))}
+.gym .adm-grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-width:1200px;margin:0 auto}
+.gym .adm-card{padding:14px;border-radius:18px;background:hsl(var(--surface));border:1px solid hsl(var(--line));min-width:0}
+.gym .adm-card h2{margin:0 0 10px;font-family:var(--display);font-size:18px;line-height:1.2}
+.gym .adm-card h2 small{font-family:inherit;font-weight:600;font-size:13px;color:hsl(var(--muted))}
+.gym .adm-card h2.adm-sub{margin-top:18px}
+.gym .adm-cardhead{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}
+.gym .adm-cardhead h2{margin:0}
+.gym .adm-pills{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.gym .adm-pills button{flex:none;min-height:0;min-width:0;line-height:1.2;box-shadow:none;font:inherit;font-size:12.5px;font-weight:700;padding:6px 10px;border-radius:999px;border:1px solid hsl(var(--line));background:transparent;color:hsl(var(--muted));cursor:pointer}
+.gym .adm-pills button[aria-pressed="true"]{background:hsl(var(--accent));border-color:hsl(var(--accent));color:hsl(var(--bg))}
+.gym .adm-chart{position:relative}
+.gym .adm-chart svg{display:block;width:100%;height:auto;touch-action:pan-y}
+.gym .adm-grid{stroke:hsl(var(--line));stroke-width:1;opacity:.6}
+.gym .adm-ax{fill:hsl(var(--muted));font-size:11px;font-variant-numeric:tabular-nums}
+.gym .adm-cross{stroke:hsl(var(--muted));stroke-width:1;stroke-dasharray:3 3}
+.gym .adm-bar{fill:hsl(var(--accent));opacity:.85}
+.gym .adm-bar.on{opacity:1}
+.gym .adm-line{fill:none;stroke:hsl(var(--accent));stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.gym .adm-area{fill:hsl(var(--accent) / .12)}
+.gym .adm-dot{fill:hsl(var(--accent));stroke:hsl(var(--surface));stroke-width:2}
+.gym .adm-tip{position:absolute;top:0;transform:translateX(-50%);pointer-events:none;display:flex;flex-direction:column;align-items:center;padding:5px 9px;border-radius:10px;background:hsl(var(--ink));color:hsl(var(--bg));font-size:12px;white-space:nowrap;box-shadow:0 4px 14px rgb(0 0 0 / .18)}
+.gym .adm-tip b{font-size:13px}
+.gym .adm-hbars{display:flex;flex-direction:column;gap:8px}
+.gym .adm-hrow{display:grid;grid-template-columns:minmax(90px,38%) minmax(0,1fr) auto;align-items:center;gap:10px;font-size:13.5px}
+.gym .adm-hk{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gym .adm-htrack{height:12px;border-radius:6px;background:hsl(var(--accent) / .1);overflow:hidden}
+.gym .adm-hfill{display:block;height:100%;border-radius:6px;background:hsl(var(--accent));min-width:2px}
+.gym .adm-hn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;min-width:34px}
+.gym .adm-hn small{font-weight:600;color:hsl(var(--muted))}
+.gym .adm-meter{height:14px;border-radius:7px;background:hsl(var(--accent) / .1);overflow:hidden}
+.gym .adm-meter span{display:block;height:100%;background:hsl(var(--accent));border-radius:7px}
+.gym .adm-note{margin:6px 0 0;font-size:13px;color:hsl(var(--muted))}
+.gym .adm-empty{margin:0;color:hsl(var(--muted));font-size:13px}
+.gym .adm-link{margin-top:8px;background:none;border:0;padding:4px 0;font:inherit;font-size:13px;font-weight:800;color:hsl(var(--accent));text-decoration:underline;cursor:pointer}
+.gym .adm-table{overflow:auto;max-height:420px;border:1px solid hsl(var(--line));border-radius:12px;margin-top:8px}
+.gym .adm-table table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.gym .adm-table th,.gym .adm-table td{padding:7px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid hsl(var(--line))}
+.gym .adm-table th:first-child,.gym .adm-table td:first-child,.gym .adm-table .l{text-align:left}
+.gym .adm-table th{position:sticky;top:0;background:hsl(var(--surface));font-weight:800}
+.gym .adm-foot{max-width:1200px;margin:14px auto 0;font-size:12px;color:hsl(var(--muted))}
+@media (min-width:700px){.gym .adm-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (min-width:900px){
+  .gym .adm{padding:28px 32px 48px}
+  .gym .adm-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gym .adm-card.wide{grid-column:1/-1}
+  .gym .adm-cardhead{flex-direction:row;justify-content:space-between;align-items:center}
+  .gym .adm-pills{flex-wrap:wrap;justify-content:flex-end;max-width:62%}
+}

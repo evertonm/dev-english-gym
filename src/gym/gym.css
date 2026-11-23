@@ -361,7 +361,7 @@ html,body,#root{height:100%;margin:0}
 
 /* Sheet */
 .gym .sheet-bg{position:fixed;inset:0;z-index:20;background:hsl(var(--ink) / .55);display:flex;align-items:flex-end;justify-content:center}
-.gym .sheet{width:100%;max-width:520px;background:hsl(var(--bg));border-radius:28px 28px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+.gym .sheet{width:100%;max-width:520px;max-height:100dvh;overflow-y:auto;overscroll-behavior:contain;background:hsl(var(--bg));border-radius:28px 28px 0 0;padding:22px 16px calc(22px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
 .gym .sheet-title{font-family:var(--display);font-weight:800;font-size:28px;line-height:1.05;margin:0}
 .gym .sheet-form{display:flex;flex-direction:column;gap:12px}
 .gym .sheet input{font:inherit;font-weight:700;font-size:18px;color:hsl(var(--ink));background:hsl(var(--surface));border:2px solid hsl(var(--line));border-radius:16px;padding:13px 14px;width:100%}
@@ -700,7 +700,7 @@ html,body,#root{height:100%;margin:0}
 
   /* Sheet becomes a centered dialog */
   .gym .sheet-bg{align-items:center}
-  .gym .sheet{max-width:460px;border-radius:28px;padding:30px 28px}
+  .gym .sheet{max-width:460px;border-radius:28px;padding:30px 28px;max-height:calc(100dvh - 32px)}
 }
 
 /* Shared surfaces and controls across worlds, chat, phrasebook, profile and exercises. */
@@ -807,7 +807,7 @@ html,body,#root{height:100%;margin:0}
   .gym .app:has(#v-board:not(.hidden)){grid-template-rows:minmax(0,1fr) auto;grid-template-areas:"nav main" "nav comp"}
   .gym .app:has(#v-board:not(.hidden)) header.top{position:absolute;top:12px;right:max(16px,calc((100% - var(--sidebar) - 1240px) / 2));z-index:4;padding:0;min-height:62px}
   .gym #v-board{padding-top:17px;gap:17px}
-  .gym .bhead{grid-template-columns:minmax(0,.87fr) auto minmax(210px,1.13fr);gap:12px;padding:0 212px 0 14px;min-height:82px}
+  .gym .bhead{grid-template-columns:minmax(0,.87fr) auto minmax(210px,1.13fr);gap:12px;padding:0 var(--tbw,300px) 0 14px;min-height:82px}
   .gym .bhud{grid-row:auto;grid-column:auto;margin-left:clamp(8px,3.2vw,58px)}
   .gym .btitle p{width:max-content;max-width:calc(100% + 84px)}
   .gym .wnav{align-self:start;padding-top:4px}
@@ -878,3 +878,41 @@ html,body,#root{height:100%;margin:0}
 .gym .turn.pulse{animation:turnpulse .7s ease}
 @keyframes turnpulse{0%{box-shadow:0 0 0 0 hsl(var(--violet) / .5)}100%{box-shadow:0 0 0 14px hsl(var(--violet) / 0)}}
 @media (prefers-reduced-motion:reduce){.gym .turn.pulse{animation:none}}
+/* Phrases: plain block flow (some mobile browsers don't resize <details> flex items on toggle). */
+.gym main#v-book:not(.hidden){display:block}
+.gym #v-book > *{margin:0 0 14px}
+.gym #v-book details.pb{display:block;height:auto;flex:none;min-height:min-content}
+@media (min-width:900px){
+  .gym main#v-book:not(.hidden){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;gap:16px;align-content:start;align-items:start}
+  .gym #v-book > *{margin:0}
+}
+
+.gym .sheet > *{flex-shrink:0}
+.gym .lvpick{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:hsl(var(--muted))}
+.gym .lvpick select{font:inherit;font-weight:800;color:hsl(var(--ink));background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:999px;padding:6px 10px}
+/* Guest nudge: save progress by signing in (never blocks). */
+.gym .savebox{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:hsl(var(--accent) / .1);border:1px solid hsl(var(--accent) / .35);color:hsl(var(--ink));font-size:14.5px;line-height:1.4;text-align:left}
+.gym .savebox.mini{flex-direction:row;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;font-size:13.5px}
+.gym .savebox.mini .btn{flex:none;width:auto;padding:8px 14px;font-size:14px;min-height:0}
+.gym .end .savebox{margin:6px 0 4px}
+@media (max-width:520px){.gym .savebox.mini{flex-direction:column;align-items:stretch}.gym .savebox.mini .btn{width:100%}}
+/* Lesson narration toggle and spoken explanation */
+.gym .narr{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;font-weight:800;padding:6px 12px;border-radius:999px;border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--accent));cursor:pointer;margin-bottom:4px}
+.gym .narr[aria-pressed="false"]{color:hsl(var(--muted))}
+.gym .xpl{margin:6px 0 4px;font-size:15.5px;line-height:1.55;color:hsl(var(--ink))}
+/* Bosses: avatar on tile 16, in the info card, battle banner with health bar, end screen */
+.gym .boss-av{display:block;width:100%;height:100%;object-fit:contain}
+.gym .tico.boss{width:clamp(30px,9cqw,52px);height:clamp(30px,9cqw,52px)}
+.gym .tico.boss .boss-av{filter:drop-shadow(0 2px 0 hsl(var(--shadow) / .25))}
+.gym .turn.bossturn{position:relative}
+.gym .bossbig{float:right;width:88px;height:88px;margin:-4px -4px 6px 10px;border-radius:50%;background:hsl(var(--accent) / .12);padding:4px}
+.gym .bossbar{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:14px;border-radius:16px;background:hsl(var(--accent) / .1);border:1px solid hsl(var(--accent) / .3)}
+.gym .bossbar .boss-av{flex:none;width:64px;height:64px}
+.gym .bossbar .bb{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.gym .bossbar .bb b{font-family:var(--display);font-size:18px;line-height:1}
+.gym .bossbar .bb span,.gym .bossbar .bb small{font-size:12.5px;color:hsl(var(--muted))}
+.gym .bossbar .hp{height:10px;border-radius:5px;background:hsl(var(--tomato) / .18);overflow:hidden}
+.gym .bossbar .hp i{display:block;height:100%;border-radius:5px;background:hsl(var(--tomato));transition:width .5s ease}
+.gym .bossend{width:150px;height:150px;margin:0 auto}
+.gym .bossend.down{transform:rotate(-8deg);filter:grayscale(.55);opacity:.85}
+.gym .bossline{margin:4px 0 6px;font-weight:700;font-style:italic;color:hsl(var(--muted))}

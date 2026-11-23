@@ -47,9 +47,11 @@ export default defineSchema({
     due: v.number(),
     interval: v.number(),
     reps: v.number(),
+    // wrong/better/tip are stored encrypted (convex/crypto.ts); bh = HMAC of `better` for de-duplication.
+    bh: v.optional(v.string()),
   })
     .index("by_user_due", ["userId", "due"])
-    .index("by_user_better", ["userId", "better"]),
+    .index("by_user_bh", ["userId", "bh"]),
   aiUsage: defineTable({
     userId: v.id("users"),
     day: v.string(),
@@ -57,6 +59,9 @@ export default defineSchema({
     // Voice transcriptions today (cheap, so they don't use the message quota; capped separately)
     stt: v.optional(v.number()),
   }).index("by_user_day", ["userId", "day"]),
+  // Cached text-to-speech audio (see tts.ts) and the daily count of new generations.
+  ttsCache: defineTable({ hash: v.string(), storageId: v.id("_storage"), ts: v.number() }).index("by_hash", ["hash"]),
+  ttsDaily: defineTable({ day: v.string(), count: v.number() }).index("by_day", ["day"]),
   // First-party usage events for the admin dashboard (see analytics.ts).
   events: defineTable({
     name: v.string(),
