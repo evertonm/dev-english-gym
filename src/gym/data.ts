@@ -71,14 +71,35 @@ export const UNITS: any[] =[
 ["I can start in two weeks.","Posso começar em duas semanas.","start"],
 ["Is the position fully remote?","A vaga é totalmente remota?","fully"],
 ["What are the next steps?","Quais são os próximos passos?","steps"],
-["Thank you for your time.","Obrigado pelo seu tempo.","time"]]}
+["Thank you for your time.","Obrigado pelo seu tempo.","time"]]},
+{id:'pushback',t:'Discordar e negociar',s:'Dizer não sem queimar a ponte',p:[
+["I see your point, but I disagree.","Entendo seu ponto, mas discordo.","point"],
+["That's a fair point.","É um ponto justo.","fair"],
+["Can we push the deadline to Monday?","Podemos empurrar o prazo pra segunda?","deadline"],
+["I don't think we have capacity for that.","Acho que não temos capacidade pra isso.","capacity"],
+["What if we cut the scope?","E se a gente cortar o escopo?","scope"],
+["Let's find a middle ground.","Vamos achar um meio-termo.","middle"],
+["I'd rather fix the root cause.","Prefiro corrigir a causa raiz.","rather"],
+["Can we agree on the priorities first?","Podemos alinhar as prioridades primeiro?","priorities"]]},
+{id:'design',t:'System design',s:'Explicar arquitetura e decisões',p:[
+["We split the monolith into services.","Dividimos o monólito em serviços.","split"],
+["The API sits behind a load balancer.","A API fica atrás de um load balancer.","behind"],
+["We cache the results for five minutes.","Fazemos cache dos resultados por cinco minutos.","cache"],
+["The queue handles the heavy jobs.","A fila cuida dos jobs pesados.","handles"],
+["It scales horizontally.","Escala horizontalmente.","scales"],
+["The bottleneck was the database.","O gargalo era o banco de dados.","bottleneck"],
+["We chose it for its reliability.","Escolhemos pela confiabilidade.","reliability"],
+["It's a trade-off between speed and cost.","É um trade-off entre velocidade e custo.","between"]]}
 ];
 export const SCEN: any[] =[
 {id:'recruiter',t:'Recrutador',role:'a friendly tech recruiter doing a first screening call for a remote senior developer position'},
 {id:'standup',t:'Daily',role:'an engineering manager running the daily standup meeting of a software team'},
 {id:'review',t:'Code review',role:'a teammate discussing a pull request that the learner opened'},
 {id:'behavioral',t:'Entrevista',role:'a hiring manager asking behavioral interview questions about teamwork, deadlines, conflict and mistakes'},
-{id:'tech',t:'Papo técnico',role:'a senior engineer asking the learner to explain a past project and its technical decisions'}
+{id:'tech',t:'Papo técnico',role:'a senior engineer asking the learner to explain a past project and its technical decisions'},
+{id:'incident',t:'Incidente em produção',xp:500,role:'an engineering manager during a production incident'},
+{id:'salary',t:'Negociar salário',xp:1500,role:'a recruiter making a job offer'},
+{id:'cto',t:'Entrevista com CTO',xp:3600,role:'the CTO of a startup in a final interview'}
 ];
 export const LESSONS: any[] =[
 {id:'past',t:'Passado',s:'Contar o que você fez',c:[
@@ -151,5 +172,52 @@ export const LESSONS: any[] =[
  {h:'Som de ai e ei',pt:'O i e o a mudam de som.',ex:[["height","háit"],["idle","ái-dol"],["archive","ár-kaiv"],["data","dêi-ta"],["label","lêi-bol"]]}],
  q:[["cache soa como…",["cash","catch","cá-che"],"cache"],["queue soa como…",["kiu","kuê-ue","quéu"],"queue"],["Qual sílaba é forte em develop?",["VE","DE","LOP"],"develop"],["height rima com…",["light","eight","wait"],"height, light"],["suite soa como…",["sweet","suit","suí-te"],"suite"]],
  w:null,
- sp:["Clear the cache and run the query.","The queue is idle.","I'm a software engineer."]}
+ sp:["Clear the cache and run the query.","The queue is idle.","I'm a software engineer."]},
+{id:'conditionals',t:'Hipóteses',s:'If, will e would',c:[
+ {h:'Se acontecer',pt:'If + presente, will + verbo. Pra riscos e plano B.',ex:[["If the build fails, we'll roll back.","Se o build falhar, a gente reverte."],["If you need help, let me know.","Se precisar de ajuda, me avisa."]]},
+ {h:'Se fosse',pt:'If + passado, would + verbo. Situação imaginária.',ex:[["If we had more time, I would refactor it.","Se tivéssemos mais tempo, eu refatoraria."],["If I were you, I'd add a cache.","Se eu fosse você, colocaria um cache."]]},
+ {h:'Would pra suavizar',pt:'Opinião com would soa mais diplomática.',ex:[["I would suggest a smaller PR.","Eu sugeriria um PR menor."],["Would it be possible to move the call?","Seria possível mudar a call?"]]}],
+ q:[["If the tests pass, we ___ deploy today.",["will","would","are"]],["If I ___ you, I'd split this PR.",["were","am","be"]],["If we had more time, we ___ rewrite it.",["would","will","are"]],["___ it be possible to start next week?",["Would","Will","Do"]],["If you ___ help, let me know.",["need","needed","will need"]]],
+ w:["O que você faria se tivesse mais tempo no seu projeto atual?","If I had more time, I would improve the test coverage and refactor the API layer."],
+ sp:["If the build fails, we'll roll back.","If I were you, I'd add a cache.","Would it be possible to move the call?"]},
+{id:'modals',t:'Certeza e conselho',s:'should, might, must',c:[
+ {h:'Recomendar',pt:'should = deveria. Conselho sem ser mandão.',ex:[["We should add monitoring.","Deveríamos colocar monitoramento."],["You shouldn't commit secrets.","Você não deveria commitar segredos."]]},
+ {h:'Grau de certeza',pt:'must = com certeza. might = talvez. can\'t = impossível.',ex:[["It must be a cache issue.","Com certeza é problema de cache."],["It might be the new release.","Pode ser a release nova."],["It can't be the database, it's up.","Não pode ser o banco, ele está no ar."]]},
+ {h:'Sobre o passado',pt:'should have = deveria ter. might have = pode ter.',ex:[["We should have tested it on Android.","Devíamos ter testado no Android."],["Someone might have changed the config.","Alguém pode ter mudado a config."]]}],
+ q:[["We ___ add alerts before the launch.",["should","must to","would to"]],["Every request times out, so it ___ be the network. (com certeza)",["must","might","should"]],["I'm not sure, it ___ be a race condition.",["might","must","can't"]],["We should have ___ it before Friday.",["tested","test","testing"]],["It ___ be the API, the API is fine.",["can't","must","should"]]],
+ w:["Apareceu um bug em produção. Escreva o que pode ter causado e o que o time deveria fazer.","It might be the new release. We should roll back and add a test for this case."],
+ sp:["It might be a cache issue.","We should have tested it on Android.","You shouldn't commit secrets."]},
+{id:'passive',t:'Voz passiva',s:'Incidentes e release notes',c:[
+ {h:'Quem fez não importa',pt:'be + particípio. Comum em incidente e release note.',ex:[["The bug was fixed yesterday.","O bug foi corrigido ontem."],["The feature is used by two million users.","A feature é usada por dois milhões de usuários."]]},
+ {h:'Já aconteceu',pt:'has been / have been + particípio.',ex:[["The fix has been deployed.","A correção já foi pro ar."],["All tickets have been closed.","Todos os tickets foram fechados."]]},
+ {h:'Vai acontecer',pt:'will be + particípio.',ex:[["The API will be deprecated in June.","A API vai ser descontinuada em junho."],["You will be notified by email.","Você vai ser avisado por e-mail."]]}],
+ q:[["The bug ___ fixed last night.",["was","is","has"]],["The fix has ___ deployed to production.",["been","be","being"]],["The old endpoint will be ___ next month.",["removed","remove","removing"]],["This library is ___ by thousands of devs.",["used","use","using"]],["Qual está na voz passiva?",["The data was lost during the migration.","We lost the data during the migration.","The migration loses data."]]],
+ w:["Escreva um resumo curto de incidente: o que aconteceu e o que já foi feito.","The payment service was down for 20 minutes. The root cause has been found and a fix has been deployed."],
+ sp:["The fix has been deployed.","The bug was fixed yesterday.","The API will be deprecated in June."]},
+{id:'phrasal',t:'Phrasal verbs de dev',s:'look into, roll back, figure out',c:[
+ {h:'Investigar',pt:'look into = investigar. figure out = descobrir.',ex:[["I'll look into it.","Vou investigar."],["We need to figure out the root cause.","Precisamos descobrir a causa raiz."]]},
+ {h:'Configurar e reverter',pt:'set up = configurar. roll back = reverter. roll out = liberar aos poucos.',ex:[["Can you set up the staging environment?","Pode configurar o ambiente de staging?"],["Let's roll back the release.","Vamos reverter a release."],["We'll roll out the feature next week.","Vamos liberar a feature semana que vem."]]},
+ {h:'Ideias e prazos',pt:'come up with = ter uma ideia. run out of = ficar sem.',ex:[["She came up with a better solution.","Ela teve uma ideia melhor."],["We ran out of time.","Ficamos sem tempo."]]}],
+ q:[["I'll look ___ the error and get back to you.",["into","at","for"]],["We need to figure ___ why it's slow.",["out","up","in"]],["The release broke login. Let's roll it ___.",["back","out","up"]],["Can you set ___ the CI pipeline?",["up","on","out"]],["We ran ___ of time before the demo.",["out","off","away"]]],
+ w:["Diga o que você vai fazer com um bug novo, usando look into ou figure out.","I'll look into the bug today and try to figure out the root cause."],
+ sp:["I'll look into it.","Let's roll back the release.","We ran out of time."]},
+{id:'tradeoffs',t:'Discutir trade-offs',s:'Prós, contras e decisão',c:[
+ {h:'Prós e contras',pt:'The upside is… The downside is…',ex:[["The upside is that it's faster.","A vantagem é que é mais rápido."],["The downside is the extra cost.","A desvantagem é o custo extra."]]},
+ {h:'Comparar opções',pt:'whereas = enquanto. on the other hand = por outro lado.',ex:[["Postgres is consistent, whereas Redis is faster.","Postgres é consistente, enquanto Redis é mais rápido."],["On the other hand, it's harder to maintain.","Por outro lado, é mais difícil de manter."]]},
+ {h:'Decidir com critério',pt:'It depends on… / Given…, I\'d go with…',ex:[["It depends on the traffic.","Depende do tráfego."],["Given our deadline, I'd go with the simpler option.","Dado o nosso prazo, eu iria pela opção mais simples."]]}],
+ q:[["The ___ is that it costs more.",["downside","download","downtime"]],["SQL is strict, ___ NoSQL is flexible.",["whereas","because","so"]],["On the other ___, it's harder to test.",["hand","side","way"]],["___ our deadline, I'd go with option A.",["Given","Giving","Gave"]],["It depends ___ how many users we have.",["on","of","from"]]],
+ w:["Compare duas tecnologias que você conhece e diga qual escolheria e por quê.","React Native shares code across platforms, whereas native apps perform better. Given our small team, I'd go with React Native."],
+ sp:["The downside is the extra cost.","On the other hand, it's harder to maintain.","Given our deadline, I'd go with the simpler option."]}
 ];
+
+// Learning levels. Each lesson and training unit belongs to one level; a level opens when the
+// previous one is finished (every lesson with at least one star) or when its placement test is passed.
+export const LEVELS: any[] = [
+  {t:'Básico',tag:'A2',s:'Frases do dia a dia de dev'},
+  {t:'Intermediário',tag:'B1',s:'Entrevista, experiência e escrita'},
+  {t:'Avançado',tag:'B2',s:'Negociar, explicar e decidir'},
+]
+const LESSON_LV: Record<string, number> = {past:0,present:0,future:0,polite:0,questions:0,perfect:1,brmistakes:1,stories:1,writing:1,sounds:1,conditionals:2,modals:2,passive:2,phrasal:2,tradeoffs:2}
+const UNIT_LV: Record<string, number> = {standup:0,help:0,review:0,meet:1,bugs:1,intro:1,story:2,offer:2,pushback:2,design:2}
+for (const l of LESSONS) l.lv = LESSON_LV[l.id] ?? 0
+for (const u of UNITS) u.lv = UNIT_LV[u.id] ?? 0
