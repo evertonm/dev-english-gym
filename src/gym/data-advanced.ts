@@ -85,14 +85,14 @@ export const ADV_LESSONS: any[] = [
  {h:'Suavizar opiniões',pt:'I\'d argue… / It seems to me… soam firmes sem ser agressivos.',ex:[["I'd argue that the cache is the real bottleneck.","Eu diria que o cache é o verdadeiro gargalo."],["It seems to me that we're overcomplicating this.","Me parece que estamos complicando demais."]]},
  {h:'Sugerir com cuidado',pt:'It might be worth… / Have we considered…? abrem espaço pra discussão.',ex:[["It might be worth adding a retry.","Talvez valha a pena adicionar um retry."],["Have we considered using a queue?","Já consideramos usar uma fila?"]]},
  {h:'Admitir incerteza',pt:'I\'m not entirely sure, but… mostra honestidade, não fraqueza.',ex:[["I'm not entirely sure, but it looks like a race condition.","Não tenho certeza total, mas parece uma race condition."],["As far as I know, nothing changed.","Até onde eu sei, nada mudou."]]}],
- q:[["It ___ be worth checking the logs.",["might","must","shall"]],["I'd ___ that the design is too complex.",["argue","arguing","argued"]],["___ we considered a simpler option?",["Have","Did","Are"]],["I'm not ___ sure, but it seems slow.",["entirely","entire","entirety"]],["As ___ as I know, the API is stable.",["far","long","much"]]],
+ q:[["It ___ be worth checking the logs.",["might","mights","might to"]],["I'd ___ that the design is too complex.",["argue","arguing","argued"]],["___ we considered a simpler option?",["Have","Did","Are"]],["I'm not ___ sure, but it seems slow.",["entirely","entire","entirety"]],["As ___ as I know, the API is stable.",["far","long","much"]]],
  w:["Discorde educadamente de uma decisão técnica do seu time.","I see the reasoning, but I'd argue that a monorepo might slow us down. Have we considered keeping the services separate for now?"],
  sp:["It might be worth adding a retry.","Have we considered using a queue?","I'm not entirely sure, but it looks like a race condition."]},
 {id:'feedback',t:'Feedback difícil',s:'Falar do problema sem atacar a pessoa',c:[
  {h:'Começar pelo concreto',pt:'Fale do que aconteceu, não de quem a pessoa é.',ex:[["In yesterday's review, two comments sounded harsh.","Na review de ontem, dois comentários soaram duros."],["The last three PRs didn't have tests.","Os três últimos PRs não tinham testes."]]},
  {h:'Mostrar o impacto',pt:'The impact was… / This made it harder to…',ex:[["The impact was a late release.","O impacto foi um release atrasado."],["This made it harder for the team to help.","Isso dificultou o time de ajudar."]]},
  {h:'Pedir, não mandar',pt:'Going forward, could you…? / What do you think?',ex:[["Going forward, could you flag delays earlier?","Daqui pra frente, você pode avisar atrasos mais cedo?"],["How does that sound to you?","O que você acha disso?"]]}],
- q:[["___ forward, could you add tests?",["Going","Coming","Moving"]],["The ___ was a delayed release.",["impact","impacted","impacting"]],["This made it ___ for the team to review.",["harder","hard","hardest"]],["How does that ___ to you?",["sound","hear","listen"]],["Feedback bom fala de…",["fatos e impacto","personalidade","outras pessoas"]]],
+ q:[["___ forward, could you add tests?",["Going","Coming","Getting"]],["The ___ was a delayed release.",["impact","impacted","impacting"]],["This made it ___ for the team to review.",["harder","hard","hardest"]],["How does that ___ to you?",["sound","hear","listen"]],["Feedback bom fala de…",["fatos e impacto","personalidade","outras pessoas"]]],
  w:["Dê um feedback para um colega que não avisou que ia atrasar uma entrega.","In the last sprint, the API was delivered two days late and we found out on the release day. The impact was a rushed QA. Going forward, could you flag delays as soon as you see them?"],
  sp:["The impact was a late release.","Going forward, could you flag delays earlier?","How does that sound to you?"]},
 {id:'connectors',t:'Conectores formais',s:'However, therefore, despite, which',c:[
@@ -113,7 +113,7 @@ export const ADV_LESSONS: any[] = [
  {h:'Abrir',pt:'Let me walk you through… = deixa eu te mostrar passo a passo.',ex:[["Let me walk you through the new architecture.","Deixa eu mostrar a nova arquitetura passo a passo."],["The goal of this meeting is to pick an option.","O objetivo desta reunião é escolher uma opção."]]},
  {h:'Guiar',pt:'Moving on to… / Let\'s park that for now.',ex:[["Moving on to the next topic.","Passando para o próximo assunto."],["Let's park that for now and come back later.","Vamos deixar isso de lado por agora e voltar depois."]]},
  {h:'Fechar',pt:'To wrap up… / Next steps are…',ex:[["To wrap up, we'll start with option B.","Pra fechar, vamos começar com a opção B."],["The next steps are on the doc.","Os próximos passos estão no documento."]]}],
- q:[["Let me walk you ___ the plan.",["through","across","over to"]],["___ on to the budget.",["Moving","Going","Passing"]],["Let's ___ that for now.",["park","stop","stand"]],["To ___ up, we chose option A.",["wrap","close","end"]],["The goal ___ this meeting is to decide.",["of","for","to"]]],
+ q:[["Let me walk you ___ the plan.",["through","across","over to"]],["___ on to the budget.",["Moving","Moved","Passing"]],["Let's ___ that for now.",["park","stop","stand"]],["To ___ up, we chose option A.",["wrap","close","end"]],["The goal ___ this meeting is to decide.",["of","for","to"]]],
  w:["Escreva a abertura e o fechamento de uma reunião sobre um novo projeto.","Thanks for joining. Let me walk you through the plan for the new checkout. ... To wrap up, we'll start with the payment API, and the next steps are in the doc."],
  sp:["Let me walk you through the new architecture.","Moving on to the next topic.","To wrap up, we'll start with option B."]},
 // ---------- C2 ----------
@@ -142,7 +142,7 @@ export const ADV_LESSONS: any[] = [
  {h:'Ancorar no valor',pt:'What this means for the business is… liga tecnologia a dinheiro.',ex:[["What this means for the business is faster onboarding.","O que isso significa para o negócio é um onboarding mais rápido."],["Every second of load time costs us conversions.","Cada segundo de carregamento nos custa conversões."]]},
  {h:'Antecipar objeções',pt:'You might be thinking… / The obvious concern is…',ex:[["You might be thinking this is too expensive.","Você pode estar pensando que isso é caro demais."],["The obvious concern is the migration risk.","A preocupação óbvia é o risco da migração."]]},
  {h:'Pedir a decisão',pt:'I\'d make the case that… / So what I\'m asking for is…',ex:[["I'd make the case that we start now.","Eu defenderia que comecemos agora."],["So what I'm asking for is one sprint.","Então o que estou pedindo é uma sprint."]]}],
- q:[["What this ___ for the business is lower costs.",["means","mean","meaning"]],["You ___ be thinking it's risky.",["might","should","would to"]],["I'd make the ___ that we refactor now.",["case","point of","claim to"]],["So what I'm asking ___ is two engineers.",["for","to","about"]],["The obvious ___ is the timeline.",["concern","concerned","concerning"]]],
+ q:[["What this ___ for the business is lower costs.",["means","mean","meaning"]],["You ___ be thinking it's risky.",["might","mights","would to"]],["I'd make the ___ that we refactor now.",["case","point of","claim to"]],["So what I'm asking ___ is two engineers.",["for","to","about"]],["The obvious ___ is the timeline.",["concern","concerned","concerning"]]],
  w:["Convença seu diretor a investir uma sprint em melhorar a performance.","Every extra second of load time costs us conversions. You might be thinking a sprint is a lot, but I'd make the case that it pays off in a month. So what I'm asking for is one sprint."],
  sp:["What this means for the business is faster onboarding.","The obvious concern is the migration risk.","I'd make the case that we start now."]},
 {id:'register',t:'Formal x informal',s:'Ajustar o tom para cada pessoa',c:[
@@ -157,7 +157,7 @@ export const ADV_LESSONS: any[] = [
 // Short "why" for each new lesson question (same order as q).
 export const ADV_WHY: Record<string, string[]> = {
   hedging: [
-    "It might be worth… = talvez valha a pena. Must seria obrigação, forte demais.",
+    "It might be worth… = talvez valha a pena. Depois de might, o verbo fica na base: might be.",
     "I'd argue that… = eu diria que. Depois de I'd vem o verbo na base: argue.",
     "Have we considered…? pergunta sobre algo até agora (present perfect).",
     "Not entirely sure = não tenho certeza total. Entirely é advérbio, modifica sure.",

@@ -38,6 +38,8 @@ export default defineSchema({
     // Server-side XP guard: XP gained on the server day `srvDay` so far.
     srvDay: v.optional(v.string()),
     srvGain: v.optional(v.number()),
+    // Today's Termo guesses, so the game continues (and stays locked) on any device.
+    termo: v.optional(v.object({ day: v.string(), guesses: v.array(v.string()) })),
   }).index("by_user", ["userId"]),
   mistakes: defineTable({
     userId: v.id("users"),
@@ -59,6 +61,22 @@ export default defineSchema({
     // Voice transcriptions today (cheap, so they don't use the message quota; capped separately)
     stt: v.optional(v.number()),
   }).index("by_user_day", ["userId", "day"]),
+  // Web push subscriptions (one per browser). The client keeps last/streak up to date so reminders
+  // work for guests too. tz = minutes east of UTC (Brasília = -180); hour = local reminder hour.
+  pushSubs: defineTable({
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    anon: v.string(),
+    userId: v.optional(v.id("users")),
+    tz: v.number(),
+    hour: v.number(),
+    last: v.optional(v.string()),
+    streak: v.optional(v.number()),
+    lastSent: v.optional(v.string()),
+  })
+    .index("by_endpoint", ["endpoint"])
+    .index("by_hour", ["hour"]),
   // Cached text-to-speech audio (see tts.ts) and the daily count of new generations.
   ttsCache: defineTable({ hash: v.string(), storageId: v.id("_storage"), ts: v.number() }).index("by_hash", ["hash"]),
   ttsDaily: defineTable({ day: v.string(), count: v.number() }).index("by_day", ["day"]),

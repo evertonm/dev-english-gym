@@ -129,7 +129,7 @@ export const LESSONS: any[] =[
  {h:'Comece com Could you',pt:'Ordem direta soa rude em inglês.',ex:[["Could you review my PR?","Pode revisar meu PR?"],["Could you share the docs?","Pode compartilhar a doc?"]]},
  {h:'Pedir permissão',pt:'Can I… ou Is it okay if…',ex:[["Can I ask a question?","Posso fazer uma pergunta?"],["Is it okay if I join later?","Tudo bem se eu entrar depois?"]]},
  {h:'Discordar sem brigar',pt:'Suavize. Nunca só "no".',ex:[["I'm not sure about that.","Não tenho certeza disso."],["What if we try another approach?","E se tentarmos outra abordagem?"]]}],
- q:[["Qual é o jeito educado?",["Could you review my PR?","Review my PR.","You review my PR?"]],["___ I ask a question?",["Can","Do","Am"]],["Could you ___ me the link?",["send","sent","sending"]],["What ___ we try another approach?",["if","about","when"]],["Is it okay ___ I join later?",["if","that","to"]]],
+ q:[["Qual é o jeito educado?",["Could you review my PR?","Review my PR.","You review my PR?"]],["___ I ask a question?",["Can","Do","Am"]],["Could you ___ me the link?",["send","sent","sending"]],["What ___ we try another approach?",["if","about","when"]],["Is it okay ___ I join later?",["if","for","to"]]],
  w:["Peça pra um colega revisar seu PR hoje.","Hi! Could you review my PR today? Thanks!"],
  sp:["Could you review my PR?","Can I ask a question?","What if we try another approach?"]},
 {id:'questions',t:'Fazer perguntas',s:'Do, does e a ordem certa',c:[

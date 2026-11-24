@@ -6,6 +6,14 @@ import { pronOf } from './pron'
 import { WHY } from './why'
 import { EXPLAIN } from './explain'
 import { BOSSES } from './bosses'
+import { memesFor } from './memes'
+import { BANK, seeded } from './bank'
+import { XWORDS } from './xwords'
+import { XWORDS2 } from './xwords2'
+const XALL=[...XWORDS,...XWORDS2];
+import { makeCrossword } from './xgen'
+import { TERMO_ANSWERS, TERMO_EXTRA } from './termo-words'
+import { EMOJI_IDIOMS } from './emoji-idioms'
 import { brasiliaDay, WORKOUT_EVENTS, WORKOUT_IDS, workoutForDay } from '../../shared/workout'
 import { WORKOUTS } from './workout'
 import { ADV_SHORT } from './data-advanced'
@@ -20,6 +28,7 @@ export type GymProgress = {
   goal?: number; dayXp?: number; dayKey?: string; freezes?: number; days?: string[]; badges?: string[]
   lvl?: number; chats?: number; reviews?: number; goals?: number
   board?: Record<string, number>; diceDay?: string; diceVal?: number
+  termo?: { day: string; guesses: string[] }
 }
 export type AiResult = { ok: true; text: string } | { ok: false; code: string }
 export type GymDeps = {
@@ -37,6 +46,9 @@ export type GymDeps = {
   quota: () => AiQuota | null
   transcribe: (audio: ArrayBuffer, mime: string) => Promise<{ ok: boolean; text?: string; code?: string }>
   tts?: (text: string, lang: 'pt' | 'en') => Promise<{ ok: boolean; url?: string; code?: string }>
+  push?: () => { status: string; hour: number }
+  pushEnable?: (hour: number) => Promise<{ status: string; hour: number }>
+  pushDisable?: () => Promise<{ status: string; hour: number }>
   track: (name: string, props?: string) => void
 }
 export type AiQuota = { used: number; limit: number; rank: string; admin?: boolean; next: { xp: number; limit: number; rank: string } | null }
@@ -220,6 +232,31 @@ function saveNudge(compact){
 // One dice roll per device per day, whoever is signed in (signing out must not give a free re-roll).
 const DICE_DEV_KEY='devenglish-dice';
 function deviceDice(){try{const d=JSON.parse(localStorage.getItem(DICE_DEV_KEY)||'{}');return{day:d.day||'',val:+d.val||0}}catch(e){return{day:'',val:0}}}
+// Meme card: the mascot or a boss comments on the moment (came back, streak at risk, guest, goal hit).
+// One per situation per day; the learner can dismiss it.
+const MEME_KEY='devenglish-meme';
+function daysSinceDay(d){if(!d)return 0;const [y,m,dd]=d.split('-').map(Number);const a=new Date(y,m-1,dd),n=new Date();n.setHours(0,0,0,0);return Math.round((n-a)/864e5)}
+function memeSituation(){
+  const since=S.last?daysSinceDay(S.last):0,st=liveStreak();
+  if(S.xp>0&&since>=2)return{sit:'back',days:since};
+  if(new Date().getHours()>=18&&st>0&&S.last!==today())return{sit:'risk',days:since};
+  if(!deps.isAuthed()&&S.xp>0)return{sit:'guest',days:since};
+  if(S.xp>0&&dayXpNow()>=S.goal)return{sit:'goal',days:since};
+  return{sit:'hello',days:since};
+}
+function memeCard(){
+  const m=memeSituation(),day=today();
+  try{if(localStorage.getItem(MEME_KEY)===day+'|'+m.sit)return null}catch(e){}
+  const list=memesFor(m.sit);let h=0;for(const ch of day+m.sit)h=(h*31+ch.charCodeAt(0))>>>0;
+  const mm=list[h%list.length];
+  const end=new Date(new Date().getFullYear(),11,31),left=Math.max(0,Math.ceil((end-new Date())/864e5));
+  const text=mm.text.replace('{streak}',String(liveStreak())).replace('{xp}',String(S.xp)).replace('{days}',String(m.days)).replace('{left}',String(left));
+  const who=mm.who==='b'?{av:MASCOT,name:'Bolha'}:{av:BOSSES[mm.who].av,name:BOSSES[mm.who].name};
+  return{sit:m.sit,html:'<div class="memecard m-'+m.sit+'"><span class="mav">'+who.av+'</span><div class="mbub"><b>'+esc(who.name)+'</b><span>'+esc(text)+'</span>'+
+    '<span class="mbtns">'+(m.sit==='risk'||m.sit==='back'?'<button class="btn mini" data-memego="1">Bora, 5 minutos</button>':'')+(!deps.isAuthed()&&S.xp>0?'<button class="btn mini'+(m.sit==='guest'?'':' alt')+'" data-login="1">Salvar meu progresso</button>':'')+((m.sit==='hello'||m.sit==='goal')&&deps.push&&deps.push().status==='off'?'<button class="btn mini alt" data-push-on="1">🔔 Me lembra todo dia</button>':'')+'</span>'+
+    '</div><button class="memex" data-memex="'+m.sit+'" aria-label="Dispensar">✕</button></div>'};
+}
+function boardBanner(){const m=memeCard();return m?m.html:saveNudge(true)} // one banner at a time
 function todayHtml(){
   const d=dayXpNow(),g=Math.min(1,d/S.goal),st=liveStreak(),mu=mult(st);
   return '<section class="daily"><div class="dg"><div class="gl"><span>'+(d>=S.goal?'🎯 Meta de hoje batida!':'Meta de hoje')+'</span><b>'+Math.min(d,S.goal)+'/'+S.goal+' xp</b></div><div class="prog"><i style="width:'+(g*100)+'%"></i></div></div>'+
@@ -417,9 +454,10 @@ function startSession(ui){
   const q=order.map((pi,i)=>({pi,type:types[i%4]}));
   q.push({pi:order[0],type:'build'},{pi:order[1],type:'listen'});
   sess={ui,queue:q,pos:0,right:0,total:q.length};
-  $('#sess').classList.remove('hidden');renderEx();
+  openSess();renderEx();
 }
 function renderEx(){
+  stopAudio(); // a new exercise never talks over the previous one
   const q=sess.queue[sess.pos],u=UNITS[sess.ui],[en,pt,gap]=u.p[q.pi];
   sess.cur={en,pt};sess.done=false;sess.picked=[];
   $('#bar').style.width=(sess.pos/sess.queue.length*100)+'%';
@@ -471,7 +509,7 @@ function finish(){
   S.units[u.id]=Math.max(S.units[u.id]||0,st);try{deps.track('unit_done',u.id)}catch(e){}
   const r=award(sess.right*10),gain=r.total;
   $('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">'+esc(u.t)+' feito!</p><div class="kv"><div><b>'+sess.right+'/'+sess.total+'</b>de primeira</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">Agora use essas frases numa conversa de verdade com a IA.</p></div>';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">'+esc(u.t)+' feito!</p><div class="kv"><div><b>'+sess.right+'/'+sess.total+'</b>de primeira</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">Agora use essas frases numa conversa de verdade com a IA.</p></div>';
   const fb=$('#fb');fb.className='fb';
   fb.innerHTML='<button class="btn" id="tochat">Praticar conversa</button><button class="btn alt" id="back">Voltar pra trilha</button>';
   sess.over=true;
@@ -480,9 +518,10 @@ function finish(){
 /* ---------- review of saved mistakes ---------- */
 function startReview(){
   const list=deps.dueMistakes().slice(0,10);if(!list.length)return;
-  rev={list,pos:0,right:0};$('#sess').classList.remove('hidden');renderRev();
+  rev={list,pos:0,right:0};openSess();renderRev();
 }
 function renderRev(){
+  stopAudio(); // a new exercise never talks over the previous one
   const it=rev.list[rev.pos];rev.done=false;rev.picked=[];
   $('#bar').style.width=(rev.pos/rev.list.length*100)+'%';
   rev.tokens=it.better.replace(/[.?!]$/,'').split(/\s+/);
@@ -516,7 +555,7 @@ function gradeRev(ok){
 function finishRev(){
   S.reviews+=rev.list.length;const r=award(rev.right*5+(rev.list.length-rev.right)*2),gain=r.total;rev.over=true;
   $('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+'<p class="big">Revisão feita!</p><div class="kv"><div><b>'+rev.right+'/'+rev.list.length+'</b>certas</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">As que você acertou voltam daqui a alguns dias. As que errou voltam amanhã.</p></div>';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<p class="big">Revisão feita!</p><div class="kv"><div><b>'+rev.right+'/'+rev.list.length+'</b>certas</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">As que você acertou voltam daqui a alguns dias. As que errou voltam amanhã.</p></div>';
   const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar</button>';
 }
 function revClick(b){
@@ -547,12 +586,12 @@ function closeSession(fromHistory){
     $('#sess').setAttribute('aria-label', 'Treino');
   }
   if(sessHist){sessHist=false;if(!fromHistory&&location.hash==='#atividade'){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}}
-  $('#sess').classList.add('hidden');sess=null;les=null;rev=null;dictSink=chatSink;if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}stopAudio();renderHome();renderLearn();boardSel=null;renderBoard();
+  xw=null;tm=null;emo=null;$('#sess').classList.add('hidden');sess=null;les=null;rev=null;dictSink=chatSink;if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}stopAudio();renderHome();renderLearn();boardSel=null;renderBoard();
   if(restoreWorkoutFocus) $('[data-workout-start]')?.focus({preventScroll:true});
 }
 
 $('#sess').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;if(b.dataset.login){deps.login();return}if(workout){workoutClick(b);return}if(rev){revClick(b);return}if(les){lessonClick(b);return}if(!sess)return;
+  const b=e.target.closest('button');if(!b)return;if(b.dataset.login){deps.login();return}if(workout){workoutClick(b);return}if(emo){emoClick(b);return}if(tm){tmClick(b);return}if(xw){xwClick(b);return}if(rev){revClick(b);return}if(les){lessonClick(b);return}if(!sess)return;
   if(b.id==='quit'||b.id==='back'){closeSession();return}
   if(b.id==='tochat'){closeSession();showTab('chat');return}
   if(b.dataset.act==='say'){speak(sess.cur.en);return}
@@ -593,7 +632,7 @@ function startLesson(li){
   const L=LESSONS[li];
   const steps=[...L.c.map(c=>({k:'card',c})),...L.q.map(q=>({k:'quiz',q})),...(L.w?[{k:'write'}]:[]),...L.sp.map(t=>({k:'speak',t}))];
   les={li,L,steps,pos:0,right:0,wrote:false,spoke:0,busy:false,say:'',heard:''};
-  $('#sess').classList.remove('hidden');renderStep();
+  openSess();renderStep();
 }
 const listenRow=()=>canSpeak()?'<div class="listen"><button class="play" data-act="say" aria-label="Ouvir">'+SPK+'</button><button class="pill" data-act="slow">Mais devagar</button></div>':'';
 function renderStep(){
@@ -670,7 +709,7 @@ function finishTest(){
   if(pass)S.lvl=Math.max(S.lvl||0,lv);
   const r=award(les.right*5),gain=r.total;
   dictSink=chatSink;les.over=true;$('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+'<p class="big">'+(pass?esc(LEVELS[lv].t)+' liberado!':'Quase lá!')+'</p><div class="kv"><div><b>'+les.right+'/'+les.L.q.length+'</b>certas (precisa '+need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<p class="big">'+(pass?esc(LEVELS[lv].t)+' liberado!':'Quase lá!')+'</p><div class="kv"><div><b>'+les.right+'/'+les.L.q.length+'</b>certas (precisa '+need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+
     '<p class="note">'+(pass?'Você pulou direto para o '+esc(LVNAME(lv))+'.':'Faça as aulas do '+esc(LEVELS[lv-1].t)+' ou tente o teste de novo mais tarde.')+'</p></div>';
   const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar</button>';
 }
@@ -679,14 +718,14 @@ function finishBoard(){
   if(pass)S.board[b.key]=1;
   if(pass&&b.kind==='chefe')setTimeout(()=>sfx('fanfare'),700);
   if(pass&&b.kind==='chefe'&&!LEVELS[b.w].free)S.lvl=Math.min(PROG-1,Math.max(S.lvl||0,b.w+1));
-  const bonus=pass&&first?{quiz:10,sprint:15,rev:15,chefe:50}[b.kind]||0:0;
+  const bonus=pass&&first?{quiz:10,sprint:15,rev:15,chefe:50,daily:40}[b.kind]||0:0;
   const r=award(les.right*5+bonus),gain=r.total;
   dictSink=chatSink;les.over=true;$('#bar').style.width='100%';
   const nextW=b.w+1<PROG?WORLD[b.w+1]:'';
-  const title=pass?(b.kind==='chefe'?'Chefão derrotado!':'Casa concluída!'):'Quase lá!';
-  const note=pass?(b.kind==='chefe'?(nextW?nextW+' liberada! Seu peão já pode entrar no próximo mundo.':'Você zerou o jogo. Respeito!'):'Seu peão avança no tabuleiro.'):'Precisava de '+b.need+' acertos. Revise e tente de novo.';
+  const title=pass?(b.kind==='chefe'?'Chefão derrotado!':b.kind==='daily'?'Desafio do dia concluído!':b.kind==='emoji'?'Emoji idioms: mandou bem!':'Casa concluída!'):'Quase lá!';
+  const note=b.kind==='emoji'?(pass?(first?'Bônus de hoje garantido. Jogue mais rodadas para aprender novas expressões!':'Rodada extra feita. São quase 100 expressões!'):'Precisava de '+b.need+' acertos. Jogue outra rodada!'):b.kind==='daily'?(pass?(first?'Bônus de hoje garantido. Amanhã tem perguntas novas!':'Treino extra feito. Amanhã tem perguntas novas!'):'Precisava de '+b.need+' acertos. Tente de novo!'):pass?(b.kind==='chefe'?(nextW?nextW+' liberada! Seu peão já pode entrar no próximo mundo.':'Você zerou o jogo. Respeito!'):'Seu peão avança no tabuleiro.'):'Precisava de '+b.need+' acertos. Revise e tente de novo.';
   const B=b.kind==='chefe'?BOSSES[b.w]:null;
-  $('#sbody').innerHTML='<div class="end">'+(B?'<div class="bossend'+(pass?' down':'')+'">'+B.av+'</div><p class="bossline">'+esc(B.name)+': “'+esc(pass?B.win:B.lose)+'”</p>':MASCOT)+saveNudge()+'<p class="big">'+title+'</p><div class="kv"><div><b>'+les.right+'/'+n+'</b>certas (precisa '+b.need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+'<p class="note">'+esc(note)+'</p></div>';
+  $('#sbody').innerHTML='<div class="end">'+(B?'<div class="bossend'+(pass?' down':'')+'">'+B.av+'</div><p class="bossline">'+esc(B.name)+': “'+esc(pass?B.win:B.lose)+'”</p>':MASCOT)+saveNudge()+pushAsk()+'<p class="big">'+title+'</p><div class="kv"><div><b>'+les.right+'/'+n+'</b>certas (precisa '+b.need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+'<p class="note">'+esc(note)+'</p></div>';
   const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar ao tabuleiro</button>';
 }
 function finishLesson(){
@@ -697,7 +736,7 @@ function finishLesson(){
   const r=award(les.right*10+(les.wrote?20:0)+les.spoke*5),gain=r.total;
   dictSink=chatSink;les.over=true;
   $('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">Aula feita: '+esc(L.t)+'!</p><div class="kv"><div><b>'+les.right+'/'+L.q.length+'</b>exercícios certos</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'</div>';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">Aula feita: '+esc(L.t)+'!</p><div class="kv"><div><b>'+les.right+'/'+L.q.length+'</b>exercícios certos</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'</div>';
   const fb=$('#fb');fb.className='fb';
   const nl=les.li+1;
   fb.innerHTML='<button class="btn" id="back">Voltar ao tabuleiro</button><button class="btn alt" id="tochat">Praticar conversa</button>';
@@ -804,6 +843,17 @@ $('#v-chat').addEventListener('click',e=>{
     if(b.dataset.m==='pt')m.showPt=true;if(b.dataset.m==='hint')m.showHint=true;renderChat()}
 });
 $('#send').addEventListener('click',sendMsg);
+root.addEventListener('click',e=>{const x=e.target.closest('[data-memex]');if(x){try{localStorage.setItem(MEME_KEY,today()+'|'+x.dataset.memex)}catch(err){}renderBoard();return}
+  const po=e.target.closest('[data-push-on]');if(po){togglePush(true);return}
+  const pa=e.target.closest('[data-pushask]');if(pa){const box=pa.closest('.pushask');
+    if(pa.dataset.pushask==='yes'){if(box)box.remove();togglePush(true)}
+    else{const a=askState();try{localStorage.setItem(ASK_KEY,JSON.stringify({n:(a.n||0)+1,until:Date.now()+3*864e5}))}catch(err){}if(box)box.remove()}
+    return}
+  const dly=e.target.closest('[data-daily]');if(dly){startDaily();return}
+  const xwb=e.target.closest('[data-xword]');if(xwb){startXword();return}
+  const tmb=e.target.closest('[data-termo]');if(tmb){startTermo();return}
+  const emb=e.target.closest('[data-emoji]');if(emb){startEmoji();return}
+  const g=e.target.closest('[data-memego]');if(g){const t=worldTiles(boardW??openLv())[Math.max(0,curIndex(worldTiles(boardW??openLv())))];if(t)playTile(t);return}});
 root.addEventListener('click',e=>{const b=e.target.closest('[data-login]');if(b&&!b.closest('#log')){e.preventDefault();deps.login()}});
 $('#scen').addEventListener('change',e=>{if(e.target.id!=='chatlv')return;try{localStorage.setItem(CHATLV_KEY,e.target.value)}catch(err){}
   if(chat.scen&&!chat.busy){toast('Nível <b>'+esc(LEVELS[+e.target.value].tag)+'</b>: conversa recomeçada.');startScen(chat.scen)}});
@@ -819,6 +869,7 @@ $('#mic').addEventListener('click',()=>{
 const ROUTES={board:'/',learn:'/mundos',chat:'/conversa',book:'/frases',me:'/perfil'};
 const tabFromPath=()=>{const p=location.pathname.replace(/\/+$/,'')||'/';for(const k in ROUTES)if(ROUTES[k]===p)return k;return null};
 function showTab(t,fromHistory){
+  if(t!=='chat'&&!$('#v-chat').classList.contains('hidden')){stopAudio();if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}}
   if(!fromHistory&&ROUTES[t]&&location.pathname!==ROUTES[t]){try{history.pushState({tab:t},'',ROUTES[t]+location.search)}catch(e){}}
   ['board','learn','home','chat','book','me'].forEach(n=>$('#v-'+n).classList.toggle('hidden',n!==t));
   root.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
@@ -826,7 +877,7 @@ function showTab(t,fromHistory){
   renderChat();
 }
 root.querySelector('nav.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)showTab(b.dataset.tab)});
-const onVis=()=>{if(!document.hidden&&boardVisible()&&renderedWorkoutDay!==workoutDay())renderBoard()};
+const onVis=()=>{if(document.hidden){stopAudio();if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}}else if(boardVisible()&&renderedWorkoutDay!==workoutDay())renderBoard()};
 document.addEventListener('visibilitychange',onVis);
 const onPop=()=>{
   if(sessHist&&location.hash!=='#atividade'&&!$('#sess').classList.contains('hidden')){closeSession(true);return}
@@ -996,12 +1047,275 @@ function tileInfo(t){
   if(t.k==='chefe'){const nx=t.w+1<PROG?WORLD[t.w+1]:'',B=BOSSES[t.w];return{title:B?'Chefão: '+B.name:'Chefão: prova final',sub:B?B.role:'',ex:B?B.quote:'',av:B?B.av:'',desc:'10 perguntas de todo o mundo. Acerte 8'+(nx?' e libere '+nx+'.':LEVELS[t.w].free?' para fechar o mundo.':' e zere o jogo.'),xp:XP.chefe,go:'Enfrentar '+(B?B.name:'chefão'),again:'Lutar de novo'}}
   return{title:'Início',ex:'',desc:'Sua jornada neste mundo começa aqui.',xp:'',go:'',again:''};
 }
+// Termo (Wordle-style) in English: one 5-letter word per day, 6 tries, shareable result.
+let tm=null;const TM_KEY='devenglish-termo',TM_START=Date.UTC(2026,10,23);
+let tmValid=null;
+function tmWords(){
+  if(tmValid)return tmValid;const v=new Set(TERMO_EXTRA);TERMO_ANSWERS.forEach(([w])=>v.add(w));
+  const add=t=>String(t||'').toLowerCase().split(/[^a-z]+/).forEach(w=>{if(w.length===5)v.add(w)});
+  XALL.forEach(([w])=>add(w));UNITS.forEach(u=>u.p.forEach(p=>add(p[0])));LESSONS.forEach(l=>{l.c.forEach(c=>c.ex.forEach(e=>add(e[0])));l.q.forEach(q=>{add(q[0]);(q[1]||[]).forEach(add)});l.sp.forEach(add)});
+  BANK.forEach(lv=>lv.forEach(q=>{add(q[0]);(q[1]||[]).forEach(add)}));
+  return tmValid=v;
+}
+function tmToday(){
+  const [y,m,d]=today().split('-').map(Number),n=Math.max(0,Math.round((Date.UTC(y,m-1,d)-TM_START)/864e5));
+  const rnd=seeded('termo-order'),order=TERMO_ANSWERS.map((x,i)=>[rnd(),i]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+  const [word,mean]=TERMO_ANSWERS[order[n%order.length]];return{word,mean,num:n+1};
+}
+function tmScore(guess,word){
+  const res=Array(5).fill('x'),left={};
+  for(let i=0;i<5;i++){if(guess[i]===word[i])res[i]='g';else left[word[i]]=(left[word[i]]||0)+1}
+  for(let i=0;i<5;i++){if(res[i]==='g')continue;if(left[guess[i]]){res[i]='y';left[guess[i]]--}}
+  return res;
+}
+function startTermo(){
+  const t=tmToday();let saved=S.termo||{};
+  if(saved.day!==today()){try{saved=JSON.parse(localStorage.getItem(TM_KEY)||'{}')}catch(e){}} // older versions kept it only here
+  const guesses=saved.day===today()?(saved.guesses||[]).slice(0,6):[];
+  sess=null;les=null;rev=null;xw=null;emo=null;
+  tm={...t,guesses,cur:['','','','',''],over:false,won:false,msg:''};
+  tm.won=guesses.includes(t.word);tm.over=tm.won||guesses.length>=6;
+  openSess();renderTermo();tmFocus(0);
+}
+// Guesses go into the progress (saved to the account), so the game continues and stays locked on any device.
+function tmSave(){S.termo={day:today(),guesses:tm.guesses.slice()};save();try{localStorage.setItem(TM_KEY,JSON.stringify(S.termo))}catch(e){}}
+function renderTermo(){
+  $('#bar').style.width=(tm.guesses.length/6*100)+'%';
+  const rows=[];for(let r=0;r<6;r++){const g=tm.guesses[r],cur=r===tm.guesses.length&&!tm.over;const sc=g?tmScore(g,tm.word):null;
+    rows.push('<div class="tmrow'+(cur?' active':'')+(cur&&tm.shake?' shake':'')+'">'+[0,1,2,3,4].map(i=>{
+      if(cur)return '<input class="tmc tin'+(tm.cur[i]?' typed':'')+'" data-ti="'+i+'" value="'+esc((tm.cur[i]||'').toUpperCase())+'" maxlength="2" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="send" inputmode="text" aria-label="Letra '+(i+1)+'">';
+      const ch=g?g[i]:'';return '<span class="tmc'+(sc?' s'+sc[i]:'')+'"'+(sc?' style="animation-delay:'+(i*90)+'ms"':'')+'>'+esc(ch.toUpperCase())+'</span>'}).join('')+'</div>')}
+  const st={};tm.guesses.forEach(g=>tmScore(g,tm.word).forEach((r,i)=>{const k=g[i],p=st[k];if(r==='g'||(r==='y'&&p!=='g')||(!p))st[k]=r}));
+  const kb='<div class="tmabc" aria-label="Letras já testadas">'+[...'abcdefghijklmnopqrstuvwxyz'].map(k=>'<span class="tml'+(st[k]?' s'+st[k]:'')+'">'+k.toUpperCase()+'</span>').join('')+'</div><button class="btn" data-tk="⏎">Enviar palavra</button>';
+  let end='';
+  if(tm.over){end='<div class="tmend">'+(tm.won?'<p class="big">'+(['Gênio!','Incrível!','Muito bem!','Boa!','Ufa, foi!','No limite!'][tm.guesses.length-1])+'</p>':'<p class="big">Não foi dessa vez</p>')+
+    '<p class="tmword"><b>'+esc(tm.word.toUpperCase())+'</b> = '+esc(tm.mean)+(canSpeak()?' <button class="ico" data-tsay="1" aria-label="Ouvir">'+SPK+'</button>':'')+'</p>'+(tm.gain?'<p class="note">+'+tm.gain+' xp</p>':'')+
+    '<p class="note">Amanhã tem palavra nova.</p></div>'}
+  $('#sbody').innerHTML='<p class="ask">Termo em inglês #'+tm.num+'</p><p class="note">Descubra a palavra de 5 letras em inglês em 6 tentativas. 🟩 letra certa no lugar certo · 🟨 está na palavra, em outro lugar · ⬛ não está. Toque num quadrado para trocar a letra.</p><div class="tmgrid">'+rows.join('')+'</div>'+(tm.msg?'<p class="tmmsg">'+esc(tm.msg)+'</p>':'')+end+(tm.over?'':'<div class="tmkb">'+kb+'</div>');
+  const fb=$('#fb');fb.className='fb';fb.innerHTML=tm.over?'<div class="xbtns"><button class="btn" data-tshare="1">📤 Compartilhar</button><button class="btn alt" id="back">Voltar</button></div>':'';
+}
+function tmFocus(i){const el=root.querySelector('#sbody .tin[data-ti="'+i+'"]');if(el){el.focus();try{el.select()}catch(e){}}}
+function tmSubmit(){
+  if(!tm||tm.over)return;tm.msg='';tm.shake=false;const w=tm.cur.join('');
+  if(w.length<5){tm.msg='A palavra precisa de 5 letras.';tm.shake=true;sfx('no');renderTermo();tmFocus(Math.max(0,tm.cur.findIndex(x=>!x)));return}
+  if(!tmWords().has(w)){tm.msg='Essa palavra não está na nossa lista.';tm.shake=true;sfx('no');renderTermo();tmFocus(4);return}
+  tm.guesses.push(w);tm.cur=['','','','',''];tmSave();
+  if(w===tm.word){tm.won=tm.over=true}else if(tm.guesses.length>=6)tm.over=true;
+  if(tm.over)tmFinish();else sfx('tap');
+  renderTermo();if(!tm.over)tmFocus(0);
+}
+function tmKey(k){if(k==='⏎'||k==='Enter')tmSubmit()}
+$('#sbody').addEventListener('input',e=>{
+  if(!tm||tm.over)return;const el=e.target.closest('.tin');if(!el)return;
+  const i=+el.dataset.ti,ch=(el.value||'').toLowerCase().replace(/[^a-z]/g,'').slice(-1);
+  tm.cur[i]=ch;el.value=ch.toUpperCase();el.classList.toggle('typed',!!ch);
+  const m=root.querySelector('#sbody .tmmsg');if(m)m.remove();
+  if(ch&&i<4)tmFocus(i+1);
+});
+$('#sbody').addEventListener('keydown',e=>{
+  if(!tm||tm.over)return;const el=e.target.closest('.tin');if(!el)return;const i=+el.dataset.ti;
+  if(e.key==='Enter'){e.preventDefault();tmSubmit()}
+  else if(e.key==='Backspace'&&!el.value&&i>0){e.preventDefault();tm.cur[i-1]='';const p=root.querySelector('#sbody .tin[data-ti="'+(i-1)+'"]');if(p){p.value='';p.classList.remove('typed');tmFocus(i-1)}}
+  else if(e.key==='ArrowLeft'&&i>0){e.preventDefault();tmFocus(i-1)}
+  else if(e.key==='ArrowRight'&&i<4){e.preventDefault();tmFocus(i+1)}
+});
+// Keep the row being typed visible above the phone keyboard.
+$('#sbody').addEventListener('focusin',e=>{if(!tm)return;const el=e.target.closest('.tin');if(el)setTimeout(()=>{try{el.closest('.tmrow').scrollIntoView({block:'center',behavior:'smooth'})}catch(err){}},250)});
+function tmFinish(){
+  const key='termo:'+today(),first=!S.board[key];
+  if(first){S.board[key]=tm.won?1:2;if(tm.won){const r=award(30+(6-tm.guesses.length)*5);tm.gain=r.total}else save()}
+  sfx(tm.won?'fanfare':'no');const w=tm.word;setTimeout(()=>{if(tm&&tm.word===w)speak(w)},400);
+  try{deps.track('board_done','termo'+(tm.won?':ok':':fail'))}catch(e){}
+}
+async function tmShare(){
+  const em={g:'🟩',y:'🟨',x:'⬛'};
+  const txt='Dev English · Termo em inglês #'+tm.num+' '+(tm.won?tm.guesses.length:'X')+'/6\n\n'+tm.guesses.map(g=>tmScore(g,tm.word).map(r=>em[r]).join('')).join('\n')+'\n\n'+location.origin;
+  try{if(navigator.share){await navigator.share({text:txt});return}}catch(e){if(e&&e.name==='AbortError')return}
+  try{await navigator.clipboard.writeText(txt);toast('Resultado copiado! Cole onde quiser.')}catch(e){toast('Não consegui copiar.')}
+}
+function tmClick(b){
+  if(b.id==='quit'||b.id==='back'){closeSession();return}
+  if(b.dataset.tk){tmKey(b.dataset.tk);return}
+  if(b.dataset.tshare){tmShare();return}
+  if(b.dataset.tsay){speak(tm.word);return}
+}
+
+
+// Daily crossword: English answers, Portuguese clues, the same puzzle for everyone each day.
+let xw=null;const XEN_KEY='devenglish-xword-lang';
+function startXword(){
+  const P=makeCrossword(XALL,seeded('xword'+today()),7,11);
+  sess=null;les=null;rev=null;
+  const en=(()=>{try{return localStorage.getItem(XEN_KEY)==='en'}catch(e){return false}})();
+  xw={P,fill:P.grid.map(r=>r.map(x=>x===null?null:'')),dir:'a',r:P.entries[0].r,c:P.entries[0].c,over:false,reveals:0,en,usedPt:!en};
+  const st=S.board['xword:'+today()];
+  if(st){xw.fill=P.grid.map(r=>r.slice());xw.over=true;xw.given=st===2} // done or answers seen today: answers only, no replay
+  openSess();renderXword();
+}
+function xwEntryAt(r,c,dir){return xw.P.entries.find(e=>e.dir===dir&&(dir==='a'?e.r===r&&c>=e.c&&c<e.c+e.word.length:e.c===c&&r>=e.r&&r<e.r+e.word.length))}
+function xwCells(e){return Array.from({length:e.word.length},(_,i)=>e.dir==='a'?[e.r,e.c+i]:[e.r+i,e.c])}
+function renderXword(){
+  const P=xw.P,nums={};P.entries.forEach(e=>nums[e.r+','+e.c]=e.num);
+  const total=P.grid.flat().filter(x=>x!==null).length,filled=xw.fill.flat().filter(x=>x).length;
+  $('#bar').style.width=(filled/total*100)+'%';
+  const grid='<div class="xgrid" style="--cols:'+P.cols+'">'+P.grid.map((row,r)=>row.map((v,c)=>v===null?'<span class="xb"></span>':
+    '<label class="xc" data-r="'+r+'" data-c="'+c+'">'+(nums[r+','+c]?'<small>'+nums[r+','+c]+'</small>':'')+'<input data-x="'+r+','+c+'" maxlength="2" value="'+esc((xw.fill[r][c]||'').toUpperCase())+'" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="text" aria-label="Linha '+(r+1)+', coluna '+(c+1)+'"'+(xw.over?' readonly':'')+'></label>').join('')).join('')+'</div>';
+  const list=d=>P.entries.filter(e=>e.dir===d).map(e=>'<button class="xclue" data-xe="'+P.entries.indexOf(e)+'"><b>'+e.num+'</b> '+esc(xw.en?e.en:e.clue)+' <small>('+e.word.length+')</small></button>').join('');
+  const lang='<div class="xlang" role="group" aria-label="Idioma das dicas"><button class="pill" data-xl="pt" aria-pressed="'+!xw.en+'">Dicas em PT</button><button class="pill" data-xl="en" aria-pressed="'+xw.en+'">Clues in English · +50% XP</button></div>';
+  $('#sbody').innerHTML='<p class="ask">Palavras-cruzadas do dia</p>'+(xw.over?'<p class="note">'+(xw.given?'Você viu as respostas de hoje. Amanhã tem uma cruzadinha nova!':'Você já completou a de hoje. Amanhã tem uma nova!')+'</p>':lang)+'<p class="note">'+(xw.en?'All in English: clues and answers. Tap a clue or a square and type.':'Dicas em português, respostas em inglês. Toque numa dica ou num quadrado e digite.')+(xw.en&&xw.usedPt?' <b>(o bônus de 50% vale só jogando do início ao fim em inglês)</b>':'')+'</p>'+grid+
+    '<div class="xclues"><div><h3>'+(xw.en?'Across →':'Horizontais →')+'</h3>'+list('a')+'</div><div><h3>'+(xw.en?'Down ↓':'Verticais ↓')+'</h3>'+list('d')+'</div></div>';
+  const fb=$('#fb');fb.className='fb';
+  fb.innerHTML=xw.over?'<button class="btn" id="back">Voltar ao tabuleiro</button>':'<div class="xbtns"><button class="btn" data-xa="check">Verificar</button><button class="btn alt" data-xa="hint">Revelar letra</button><button class="btn alt" data-xa="give">Ver respostas</button></div>';
+  xwHighlight();
+}
+function xwHighlight(){
+  const e=xwEntryAt(xw.r,xw.c,xw.dir)||xwEntryAt(xw.r,xw.c,xw.dir==='a'?'d':'a');if(e)xw.dir=e.dir;
+  const on=new Set(e?xwCells(e).map(([r,c])=>r+','+c):[]);
+  root.querySelectorAll('#sbody .xc').forEach(l=>{const k=l.dataset.r+','+l.dataset.c;l.classList.toggle('on',on.has(k));l.classList.toggle('cur',k===xw.r+','+xw.c)});
+  root.querySelectorAll('#sbody .xclue').forEach(b=>b.classList.toggle('on',e&&+b.dataset.xe===xw.P.entries.indexOf(e)));
+}
+function xwFocus(r,c){const i=root.querySelector('#sbody input[data-x="'+r+','+c+'"]');if(i){xw.r=r;xw.c=c;i.focus();try{i.select()}catch(err){}xwHighlight()}}
+function xwStep(d){const e=xwEntryAt(xw.r,xw.c,xw.dir);if(!e)return;const cells=xwCells(e),i=cells.findIndex(([r,c])=>r===xw.r&&c===xw.c),n=cells[i+d];if(n)xwFocus(n[0],n[1])}
+function xwSolved(){return xw.P.grid.every((row,r)=>row.every((v,c)=>v===null||xw.fill[r][c]===v))}
+function xwFinish(given){
+  xw.over=true;const key='xword:'+today(),first=!S.board[key];
+  let r={total:0,ev:[]};
+  const enBonus=xw.en&&!xw.usedPt;
+  if(given){if(first){S.board[key]=2;save()}}
+  if(!given){if(first)S.board[key]=1;const base=first?40+Math.max(0,xw.P.entries.length*5-xw.reveals*5):10;r=award(enBonus?Math.round(base*1.5):base);sfx('fanfare')}
+  renderXword();
+  $('#sbody').insertAdjacentHTML('afterbegin','<div class="end xend">'+MASCOT+'<p class="big">'+(given?'Respostas reveladas':'Cruzadinha completa!')+'</p>'+(given?'<p class="note">Como você viu as respostas, a de hoje fica fechada. Amanhã tem uma nova!</p>':'<div class="kv"><div><b>'+xw.P.entries.length+'</b>palavras</div><div><b>+'+r.total+'</b>xp'+(enBonus?' 🇺🇸':'')+'</div></div>'+(enBonus?'<p class="note">Bônus de 50% por jogar tudo em inglês!</p>':'')+rewardsHtml(r))+'</div>');
+  $('#sbody').scrollTop=0;try{deps.track('board_done','xword'+(given?':give':':ok'))}catch(e){}
+}
+function xwClick(b){
+  if(b.id==='quit'||b.id==='back'){closeSession();return}
+  if(b.dataset.xl){const en=b.dataset.xl==='en';if(!en)xw.usedPt=true;xw.en=en;try{localStorage.setItem(XEN_KEY,en?'en':'pt')}catch(e){}const r=xw.r,c=xw.c;renderXword();xwFocus(r,c);return}
+  if(b.dataset.xe!==undefined){const e=xw.P.entries[+b.dataset.xe];xw.dir=e.dir;const cells=xwCells(e),empty=cells.find(([r,c])=>!xw.fill[r][c])||cells[0];xwFocus(empty[0],empty[1]);return}
+  const a=b.dataset.xa;if(!a||xw.over)return;
+  if(a==='check'){
+    let bad=0;root.querySelectorAll('#sbody .xc').forEach(l=>{const r=+l.dataset.r,c=+l.dataset.c,v=xw.fill[r][c],w=v&&v!==xw.P.grid[r][c];l.classList.toggle('bad',!!w);if(w)bad++});
+    if(xwSolved())xwFinish(false);else{sfx(bad?'no':'tap');toast(bad?bad+(bad===1?' letra errada':' letras erradas')+' (em vermelho).':'Até aqui tudo certo! Falta completar.')}
+  }else if(a==='hint'){
+    // Reveal the selected square if it isn't right yet; otherwise the next missing letter (this word first).
+    const ok=(r,c)=>xw.fill[r][c]===xw.P.grid[r][c];let t=null;
+    if(!ok(xw.r,xw.c))t=[xw.r,xw.c];
+    else{const e=xwEntryAt(xw.r,xw.c,xw.dir);t=(e?xwCells(e):[]).find(([r,c])=>!ok(r,c))||null;
+      if(!t){for(const e2 of xw.P.entries){const m=xwCells(e2).find(([r,c])=>!ok(r,c));if(m){xw.dir=e2.dir;t=m;break}}}}
+    if(!t)return;xw.reveals++;const [hr,hc]=t;xw.fill[hr][hc]=xw.P.grid[hr][hc];
+    const i=root.querySelector('#sbody input[data-x="'+hr+','+hc+'"]');if(i){i.value=xw.fill[hr][hc].toUpperCase();i.parentElement.classList.add('rev');i.parentElement.classList.remove('bad')}
+    if(xwSolved())xwFinish(false);else xwFocus(hr,hc);
+  }else if(a==='give'){xw.fill=xw.P.grid.map(r=>r.slice());xwFinish(true)}
+}
+$('#sbody').addEventListener('input',e=>{
+  if(!xw||xw.over)return;const i=e.target.closest('input[data-x]');if(!i)return;
+  const [r,c]=i.dataset.x.split(',').map(Number),ch=(i.value||'').toLowerCase().replace(/[^a-z]/g,'').slice(-1);
+  i.value=ch.toUpperCase();xw.fill[r][c]=ch;i.parentElement.classList.remove('bad');xw.r=r;xw.c=c;
+  const total=xw.P.grid.flat().filter(x=>x!==null).length,filled=xw.fill.flat().filter(x=>x).length;$('#bar').style.width=(filled/total*100)+'%';
+  if(ch){if(xwSolved()){xwFinish(false);return}xwStep(1)}
+});
+$('#sbody').addEventListener('keydown',e=>{
+  if(!xw||xw.over)return;const i=e.target.closest('input[data-x]');if(!i)return;
+  if(e.key==='Backspace'&&!i.value){e.preventDefault();xwStep(-1);const j=root.querySelector('#sbody input[data-x="'+xw.r+','+xw.c+'"]');if(j){j.value='';xw.fill[xw.r][xw.c]=''}}
+  else if(e.key==='ArrowRight'){xw.dir='a';xwStep(1)}else if(e.key==='ArrowLeft'){xw.dir='a';xwStep(-1)}else if(e.key==='ArrowDown'){xw.dir='d';xwStep(1)}else if(e.key==='ArrowUp'){xw.dir='d';xwStep(-1)}
+});
+$('#sbody').addEventListener('focusin',e=>{if(!xw)return;const i=e.target.closest('input[data-x]');if(!i)return;const [r,c]=i.dataset.x.split(',').map(Number);
+  if(r===xw.r&&c===xw.c&&xw._tap){xw.dir=xw.dir==='a'?'d':'a'}xw.r=r;xw.c=c;xw._tap=false;xwHighlight()});
+$('#sbody').addEventListener('pointerdown',e=>{if(!xw)return;const i=e.target.closest('input[data-x]');if(!i)return;const [r,c]=i.dataset.x.split(',').map(Number);
+  if(r===xw.r&&c===xw.c&&document.activeElement===i){xw.dir=xw.dir==='a'?'d':'a';xwHighlight()}});
+
+// Emoji idioms: type the expression the emojis stand for. Hints cost points; 5 per round, bonus once a day.
+const EMOJI_N=5;let emo=null;
+const emNorm=t=>String(t||'').toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\b(a|an|the)\b/g,' ').replace(/\s+/g,' ').trim();
+function emDist(a,b){const m=a.length,n=b.length,d=Array.from({length:m+1},(_,i)=>[i]);for(let j=1;j<=n;j++)d[0][j]=j;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n]}
+function emOk(guess,ans){const g=emNorm(guess),a=emNorm(ans);if(!g)return false;return g===a||emDist(g,a)<=Math.max(1,Math.floor(a.length/10))}
+// Hint 2: first letter of each word. Hint 3: the first half of each word.
+function emPattern(ans,more){return ans.split(' ').map(w=>{const keep=more?Math.ceil(w.length/2):1;let n=0;return w.replace(/[a-z]/gi,ch=>(n++<keep)?ch:'_')}).join('   ')}
+function startEmoji(){
+  sess=null;les=null;rev=null;xw=null;tm=null;
+  emo={list:shuffle(EMOJI_IDIOMS.slice()).slice(0,EMOJI_N),pos:0,pts:0,hints:0,state:'ask',msg:''};
+  openSess();renderEmoji();
+}
+function renderEmoji(){
+  const it=emo.list[emo.pos],[em,ans,pt,ex]=it;$('#bar').style.width=(emo.pos/EMOJI_N*100)+'%';
+  let h='<p class="ask">Qual é a expressão? <small class="emcount">'+(emo.pos+1)+'/'+EMOJI_N+'</small></p><div class="emojiq" aria-label="Emojis">'+esc(em)+'</div>';
+  if(emo.state==='ask'){
+    const hints=[];if(emo.hints>=1)hints.push('<li>💡 Significado: <b>'+esc(pt)+'</b></li>');
+    if(emo.hints>=2){const nw=ans.split(' ').length;hints.push('<li>🔤 '+nw+(nw===1?' palavra':' palavras')+': <span class="empat">'+esc(emPattern(ans,emo.hints>=3))+'</span></li>')}
+    h+=(hints.length?'<ul class="emhints">'+hints.join('')+'</ul>':'')+
+      '<input id="emin" class="eminput" placeholder="Digite em inglês…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" lang="en" enterkeyhint="send" value="'+esc(emo.typed||'')+'">'+
+      (emo.msg?'<p class="tmmsg">'+esc(emo.msg)+'</p>':'');
+    $('#sbody').innerHTML=h;
+    const fb=$('#fb');fb.className='fb';
+    fb.innerHTML='<div class="xbtns"><button class="btn" data-em="ok">Responder</button><button class="btn alt" data-em="hint"'+(emo.hints>=3?' disabled':'')+'>💡 Dica (−1 ponto)</button><button class="btn alt" data-em="skip">Pular</button></div>';
+    const i=$('#emin');if(i)setTimeout(()=>{try{i.focus()}catch(e){}},50);
+  }else{
+    const good=emo.state==='right';
+    h+='<div class="card"><span class="en">'+esc(ans)+'</span>'+pronHtml(ans)+'<span class="pt">'+esc(pt)+'</span></div><p class="note">Ex.: <i>'+esc(ex)+'</i></p>';
+    $('#sbody').innerHTML=h;
+    const fb=$('#fb');fb.className='fb '+(good?'ok':'no');
+    fb.innerHTML='<div class="v">'+(good?(emo.last===3?'Isso aí, sem dica! +3':emo.last>0?'Acertou! +'+emo.last:'Acertou, mas com todas as dicas (+0)'):'Essa era:')+'</div><button class="btn" data-em="next">'+(emo.pos+1<EMOJI_N?'Próxima':'Ver resultado')+'</button>';
+  }
+}
+function emoAnswer(){
+  const it=emo.list[emo.pos],i=$('#emin'),g=i?i.value:'';emo.typed=g;
+  if(!emNorm(g)){emo.msg='Digite a expressão em inglês.';renderEmoji();return}
+  // Each hint costs a point: 3 without hints, down to 0 after all three.
+  if(emOk(g,it[1])){emo.last=Math.max(0,3-emo.hints);emo.pts+=emo.last;emo.state='right';sfx('ok');renderEmoji();speak(it[1]);}
+  else{emo.msg='Ainda não. Tente de novo ou peça uma dica.';sfx('no');renderEmoji();const r=$('#emin');if(r){r.classList.add('shake');}}
+}
+function emoFinish(){
+  const key='emoji:'+today(),first=!S.board[key],pass=emo.pts>=7;
+  if(pass&&first)S.board[key]=1;
+  const r=award(emo.pts*3+(pass&&first?25:0));
+  $('#bar').style.width='100%';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+'<p class="big">'+(pass?'Mandou bem nos emojis!':'Boa tentativa!')+'</p><div class="kv"><div><b>'+emo.pts+'/'+(EMOJI_N*3)+'</b>pontos</div><div><b>+'+r.total+'</b>xp</div></div>'+rewardsHtml(r)+
+    '<p class="note">'+(pass?(first?'Bônus de hoje garantido (+25). ':'')+'São quase 100 expressões: jogue outra rodada!':'Faça 7 pontos para ganhar o bônus do dia. Sem dica vale 3; cada dica tira 1 ponto.')+'</p></div>';
+  const fb=$('#fb');fb.className='fb';fb.innerHTML='<div class="xbtns"><button class="btn" data-em="again">Outra rodada</button><button class="btn alt" id="back">Voltar</button></div>';
+  try{deps.track('board_done','emoji'+(pass?':ok':':fail'))}catch(e){}
+}
+function emoClick(b){
+  if(b.id==='quit'||b.id==='back'){closeSession();return}
+  const a=b.dataset.em;if(!a)return;
+  if(a==='ok')emoAnswer();
+  else if(a==='hint'){const i=$('#emin');emo.typed=i?i.value:'';if(emo.hints<3){emo.hints++;emo.msg=''}renderEmoji()}
+  else if(a==='skip'){emo.state='wrong';emo.last=0;sfx('no');renderEmoji();speak(emo.list[emo.pos][1])}
+  else if(a==='next'){emo.pos++;emo.hints=0;emo.typed='';emo.msg='';emo.state='ask';if(emo.pos>=EMOJI_N)emoFinish();else renderEmoji()}
+  else if(a==='again')startEmoji();
+}
+$('#sbody').addEventListener('keydown',e=>{if(emo&&emo.state==='ask'&&e.target.id==='emin'&&e.key==='Enter'){e.preventDefault();emoAnswer()}});
+
+// Daily challenge: 7 questions from the bank (levels already open), the same for everyone each day.
+const DAILY_N=7,DAILY_NEED=5;
+function dailyDone(){return !!S.board['daily:'+today()]}
+function startDaily(){
+  const ol=openLv(),rnd=seeded('daily'+today());
+  const all=[];for(let lv=0;lv<=ol;lv++)all.push(...(BANK[lv]||[]));
+  const pool=all.map(q=>[rnd(),q]).sort((a,b)=>a[0]-b[0]).slice(0,DAILY_N).map(x=>x[1]);
+  les={li:-1,L:{id:'daily',t:'Desafio do dia',q:pool,c:[],w:null,sp:[]},board:{w:ol,key:'daily:'+today(),kind:'daily',need:DAILY_NEED},steps:pool.map(q=>({k:'quiz',q})),pos:0,right:0,wrote:false,spoke:0,busy:false,say:'',heard:''};
+  openSess();renderStep();
+}
+// Quick access to the daily games at the top of the board (phones); desktop shows the cards beside the board.
+function gameChips(){
+  const xd=!!S.board['xword:'+today()],dd=dailyDone();
+  const tmd=S.board['termo:'+today()];
+  const emd=S.board['emoji:'+today()];
+  return '<div class="gchips"><button class="gchip" data-emoji="1">😄 Emojis'+(emd?' ✅':'')+'</button><button class="gchip" data-termo="1">🟩 Termo'+(tmd?(tmd===1?' ✅':' ❌'):'')+'</button><button class="gchip" data-xword="1">🧩 Palavras-cruzadas'+(xd?(S.board['xword:'+today()]===2?' 👀':' ✅'):'')+'</button><button class="gchip" data-daily="1">🎯 Desafio do dia'+(dd?' ✅':'')+'</button></div>';
+}
+function dailyHtml(){
+  const d=dailyDone();
+  const xd=!!S.board['xword:'+today()];
+  const tmd=S.board['termo:'+today()];
+  const emd=S.board['emoji:'+today()];
+  return '<section class="daygames"><div class="dg1"><span class="dgi">😄</span><div><b>Emoji idioms</b><small>Digite a expressão dos emojis · dicas se travar'+(emd?' · ✅ bônus de hoje feito':' · +25 XP')+'</small></div><button class="btn mini'+(emd?' alt':'')+'" data-emoji="1">Jogar</button></div><div class="dg1"><span class="dgi">🟩</span><div><b>Termo em inglês</b><small>Uma palavra de 5 letras por dia · 6 tentativas'+(tmd?(tmd===1?' · ✅ acertou hoje':' · ❌ amanhã tem outra'):' · até +55 XP')+'</small></div><button class="btn mini'+(tmd?' alt':'')+'" data-termo="1">'+(tmd?'Ver resultado':'Jogar')+'</button></div><div class="dg1"><span class="dgi">🧩</span><div><b>Palavras-cruzadas</b><small>Uma nova por dia · dicas em PT ou em inglês (+50% XP)'+(xd?(S.board['xword:'+today()]===2?' · 👀 respostas vistas':' · ✅ feita hoje'):'')+'</small></div><button class="btn mini'+(xd?' alt':'')+'" data-xword="1">'+(xd?'Ver respostas':'Jogar')+'</button></div><div class="dg1"><span class="dgi">🎯</span><div><b>Desafio do dia</b><small>'+DAILY_N+' perguntas novas todo dia · acerte '+DAILY_NEED+(d?' · ✅ feito hoje':' · +40 XP')+'</small></div><button class="btn mini'+(d?' alt':'')+'" data-daily="1">'+(d?'Jogar de novo':'Jogar')+'</button></div></section>';
+}
 function startBoardQuiz(w,t){
   const n={quiz:3,sprint:5,rev:6,chefe:10}[t.k],need={quiz:2,sprint:4,rev:4,chefe:8}[t.k];
-  const pool=shuffle(LESSONS.filter(l=>l.lv===w).flatMap(l=>l.q)).slice(0,n);
+  // Lesson questions plus the extra bank for this world, so replays keep changing.
+  const pool=shuffle(LESSONS.filter(l=>l.lv===w).flatMap(l=>l.q).concat(BANK[w]||[])).slice(0,n);
   const title={quiz:'Quiz relâmpago',sprint:'Sprint',rev:'Revisão: '+WORLD[w],chefe:'Chefão: '+WORLD[w]}[t.k];
   les={li:-1,L:{id:t.key,t:title,q:pool,c:[],w:null,sp:[]},board:{w,key:t.key,kind:t.k,need},steps:pool.map(q=>({k:'quiz',q})),pos:0,right:0,wrote:false,spoke:0,busy:false,say:'',heard:''};
-  $('#sess').classList.remove('hidden');renderStep();
+  openSess();renderStep();
 }
 function rankHud(){
   const r=rankOf(S.xp);
@@ -1172,7 +1486,7 @@ function renderBoard(){
   $('#v-board').innerHTML=
    '<div class="bhead"><div class="btitle"><h1>'+esc(WORLD[w])+'</h1><p>Mundo '+(w+1)+' · '+LEVELS[w].tag+' · '+(open?done+' de 16 casas concluídas':'bloqueado')+'</p></div>'+
    '<div class="wnav"><button class="wbtn" data-wprev aria-label="Mundo anterior"'+(w===0?' disabled':'')+'>'+CHEVRON+'</button><button class="wbtn" data-wnext aria-label="Próximo mundo"'+(w===LEVELS.length-1?' disabled':'')+'>'+CHEVRON+'</button></div>'+rankHud()+'</div>'+
-   workoutCard(workoutId)+saveNudge(true)+'<div class="bwrap"><div class="boardbox"><div class="ring">'+cells+center+'</div></div><aside class="bside">'+card+'</aside></div>';
+   workoutCard(workoutId)+gameChips()+boardBanner()+'<div class="bwrap"><div class="boardbox"><div class="ring">'+cells+center+'</div></div><aside class="bside">'+card+dailyHtml()+'</aside></div>';
   if (boardVisible() && !document.hidden && (tabFromPath() ?? 'board') === 'board') {
     const offer = renderedWorkoutDay + ':' + workoutId;
     if (offer !== lastWorkoutOffer && !S.board[workoutId]) {
@@ -1180,8 +1494,42 @@ function renderBoard(){
       trackWorkout(WORKOUT_EVENTS.offered, workoutId);
     }
   }
+  queueHop(w,cur,open,tiles.length);
 }
+// Pawn hop: when the learner's square moves forward, the pawn jumps tile by tile to the new one.
+const lastCur={};let hopTimer=0;
 function boardVisible(){return !$('#v-board').classList.contains('hidden')&&$('#sess').classList.contains('hidden')}
+function queueHop(w,cur,open,n){
+  if(!open)return;
+  if(!boardVisible())return; // remember the old square until the learner is back on the board
+  const from=lastCur[w];lastCur[w]=cur;
+  if(from===undefined||cur<=from||cur>=n)return;
+  clearTimeout(hopTimer);hopTimer=setTimeout(()=>animateHop(from,cur),260);
+}
+function animateHop(from,to){
+  const ring=$('#v-board .ring'),dest=ring&&ring.querySelector('[data-tile="'+to+'"]');if(!ring||!dest)return;
+  const pawn=dest.querySelector('.pawn');
+  let reduce=false;try{reduce=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}
+  if(reduce||!pawn||!pawn.animate){dest.classList.add('land');return}
+  // Path: every square between the old and new one (at most 5 hops, so long jumps stay quick).
+  let path=[];for(let i=from;i<=to;i++)path.push(i);
+  if(path.length>6)path=[from,...path.slice(-5)];
+  const rr=ring.getBoundingClientRect(),pr=pawn.getBoundingClientRect();
+  const pts=path.map(i=>{const t=ring.querySelector('[data-tile="'+i+'"]');const r=t.getBoundingClientRect();return[r.left+r.width/2-rr.left,r.top+r.height/2-rr.top]});
+  const hop=document.createElement('span');hop.className='hopper';hop.innerHTML=MASCOT;
+  hop.style.width=pr.width+'px';hop.style.height=pr.height+'px';ring.appendChild(hop);
+  pawn.style.opacity='0';
+  const kf=[];const step=1/(pts.length-1);
+  pts.forEach((p,k)=>{
+    const tr=(x,y,sc)=>'translate('+(x-pr.width/2)+'px,'+(y-pr.height/2)+'px) scale('+sc+')';
+    if(k>0){const q=pts[k-1];kf.push({transform:tr((p[0]+q[0])/2,(p[1]+q[1])/2-Math.max(18,pr.height*.45),1.08),offset:(k-.5)*step})}
+    kf.push({transform:tr(p[0],p[1],k===pts.length-1?1:.96),offset:k*step});
+  });
+  const dur=300*(pts.length-1);
+  for(let k=1;k<pts.length;k++)setTimeout(()=>sfx('hop'),300*k-120);
+  const an=hop.animate(kf,{duration:dur,easing:'ease-in-out',fill:'forwards'});
+  an.onfinish=()=>{hop.remove();pawn.style.opacity='';dest.classList.add('land');setTimeout(()=>dest.classList.remove('land'),700)};
+}
 // On phones the tile card sits below the board: bring it (and its button) into view.
 function showTurn(){
   const c=document.querySelector('#v-board .turn');if(!c)return;
@@ -1250,6 +1598,7 @@ function rattle(t0,d,g){
 }
 const SFX={
   tap:()=>tone(700,0,.045,'triangle',.035),
+  hop:()=>{tone(520,0,.09,'sine',.07,820)},
   ok:()=>{tone(880,0,.12,'sine',.11);tone(1320,.08,.2,'sine',.09)},
   no:()=>{tone(260,0,.22,'triangle',.1,170)},
   coin:()=>{tone(988,0,.07,'square',.03);tone(1319,.06,.16,'square',.03)},
@@ -1292,6 +1641,38 @@ $('#themebtn').addEventListener('click',()=>{applyTheme(isDark()?'light':'dark')
 try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>applyTheme(getTheme()))}catch(e){}
 
 /* ---------- profile: rank, streak, goal, levels, badges ---------- */
+// Soft ask for reminders at the end of an activity (the browser prompt only comes after "yes").
+// "Agora não" waits 3 days; at most 3 asks in total. Never shown together with the save-progress nudge.
+const ASK_KEY='devenglish-pushask';
+function askState(){try{return JSON.parse(localStorage.getItem(ASK_KEY)||'{}')}catch(e){return{}}}
+function pushAsk(){
+  if(!deps.push||deps.push().status!=='off')return '';
+  if(!deps.isAuthed()&&S.xp>0)return ''; // the save-progress nudge comes first
+  const a=askState();if((a.n||0)>=3||(a.until||0)>Date.now())return '';
+  const st=liveStreak();
+  return '<div class="memecard pushask"><span class="mav">'+MASCOT+'</span><div class="mbub"><b>Bolha</b><span>'+
+    (st>0?'Quer que eu te cutuque amanhã pra não perder a ofensiva de '+st+(st===1?' dia':' dias')+'?':'Quer que eu te cutuque amanhã pra manter o ritmo?')+' Prometo só 1 meme por dia. 😏</span>'+
+    '<span class="mbtns"><button class="btn mini" data-pushask="yes">🔔 Pode me lembrar</button><button class="btn mini alt" data-pushask="no">Agora não</button></span></div></div>';
+}
+// Daily reminders (web push) in the profile.
+function remindHtml(){
+  const P=deps.push?deps.push():{status:'unsupported',hour:20};
+  const hours=[8,12,18,19,20,21,22].map(h=>'<option value="'+h+'"'+(h===P.hour?' selected':'')+'>'+h+'h</option>').join('');
+  let body='';
+  if(P.status==='on')body='<p>🔔 Ativados. Se você ainda não praticou no dia, eu te cutuco às <select id="pushhour" aria-label="Horário do lembrete">'+hours+'</select> com um meme.</p><button class="btn alt mini" data-push="off">Desativar lembretes</button>';
+  else if(P.status==='denied')body='<p>As notificações estão bloqueadas para este site. Libere nas configurações do navegador (ícone de cadeado ao lado do endereço) e volte aqui.</p>';
+  else if(P.status==='unsupported')body=/Instagram|FBAN|FBAV|LinkedInApp|Line\/|; wv\)/i.test(navigator.userAgent)
+    ?'<p>Você abriu o app dentro de outro aplicativo (Instagram, LinkedIn…), e ele não permite notificações. Toque nos <b>⋯</b> e escolha <b>Abrir no navegador</b> (Chrome ou Safari) para ativar os lembretes.</p>'
+    :'<p>Este navegador não permite notificações. No celular, use o <b>Chrome</b> (Android) ou adicione o app à Tela de Início (iPhone).</p>';
+  else if(P.status==='ios-install')body='<p>No iPhone, os lembretes só funcionam com o app na Tela de Início: toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>, abra o Dev English por lá e ative aqui.</p>';
+  else body='<p>Receba um lembrete por dia (com meme 😏) se ainda não tiver praticado. Nada de spam: no máximo 1 por dia.</p><button class="btn mini" data-push="on">🔔 Ativar lembretes diários</button>';
+  return '<h2 class="sec">Lembretes</h2><div class="remind">'+body+'</div>';
+}
+async function togglePush(on,hour){
+  if(on&&deps.pushEnable){const r=await deps.pushEnable(hour||(deps.push?deps.push().hour:20));toast(r.status==='on'?'🔔 Lembretes ativados!':r.status==='denied'?'Notificações bloqueadas no navegador.':'Lembretes não ativados.')}
+  else if(!on&&deps.pushDisable){await deps.pushDisable();toast('Lembretes desativados.')}
+  renderMe();renderBoard();
+}
 function renderMe(){
   updateHeader();
   const r=rankOf(S.xp),st=liveStreak(),mu=mult(st),nm=nextMult(st),d=dayXpNow(),ms=MILESTONES.find(m=>m>st);
@@ -1308,7 +1689,7 @@ function renderMe(){
      '<div class="goalpick">'+GOALS.map(([g,n])=>'<button class="pill" data-goal="'+g+'" aria-pressed="'+(S.goal===g)+'">'+n+'<small>'+g+' xp</small></button>').join('')+'</div>'+
      '<p class="note">Bater a meta dá +10 xp. Você já bateu '+S.goals+(S.goals===1?' vez':' vezes')+'.</p></section>'+
    '</div>'+
-   '<h2 class="sec">Tema</h2><div class="themepick">'+[['auto','Automático'],['light','Claro'],['dark','Escuro']].map(([k,n])=>'<button class="pill" data-theme-pick="'+k+'" aria-pressed="'+(getTheme()===k)+'">'+n+'</button>').join('')+'</div>'+
+   remindHtml()+'<h2 class="sec">Tema</h2><div class="themepick">'+[['auto','Automático'],['light','Claro'],['dark','Escuro']].map(([k,n])=>'<button class="pill" data-theme-pick="'+k+'" aria-pressed="'+(getTheme()===k)+'">'+n+'</button>').join('')+'</div>'+
    '<h2 class="sec">O que sua patente libera</h2><div class="perktable">'+AI_TIERS.map((t,k)=>{const nx=AI_TIERS[k+1],cur=S.xp>=t.xp&&(!nx||S.xp<nx.xp),got=S.xp>=t.xp;
      const sc=SCEN.filter(x=>x.xp&&x.xp>=t.xp&&(!nx||x.xp<nx.xp)).map(x=>x.t);
      return '<div class="ptier'+(cur?' cur':'')+(got?' got':'')+'"><span class="pr">'+(got?'':'🔒 ')+esc(rankForXp(t.xp))+'<small>'+t.xp+' xp</small></span><span class="pv"><b>'+t.limit+'</b> mensagens/dia com a IA'+(sc.length?'<small>+ conversa: '+esc(sc.join(', '))+'</small>':'')+'</span>'+(cur?'<span class="you">você</span>':'')+'</div>'}).join('')+'</div>'+
@@ -1317,7 +1698,8 @@ function renderMe(){
    '<h2 class="sec">Conquistas <span class="cnt">'+S.badges.length+'/'+BADGES.length+'</span></h2><div class="badges">'+BADGES.map(b=>{const on=S.badges.includes(b.id);
      return '<div class="badge'+(on?' on':'')+'"><span class="be">'+b.e+'</span><b>'+esc(b.t)+'</b><span class="s">'+esc(b.d)+'</span></div>'}).join('')+'</div>';
 }
-$('#v-me').addEventListener('click',e=>{const tp=e.target.closest('[data-theme-pick]');if(tp){applyTheme(tp.dataset.themePick);renderMe();return}const b=e.target.closest('[data-goal]');if(b){S.goal=+b.dataset.goal;save();renderMe()}});
+$('#v-me').addEventListener('change',e=>{if(e.target.id==='pushhour')togglePush(true,+e.target.value)});
+$('#v-me').addEventListener('click',e=>{const pb=e.target.closest('[data-push]');if(pb){togglePush(pb.dataset.push==='on');return}const tp=e.target.closest('[data-theme-pick]');if(tp){applyTheme(tp.dataset.themePick);renderMe();return}const b=e.target.closest('[data-goal]');if(b){S.goal=+b.dataset.goal;save();renderMe()}});
 $('#rankchip').addEventListener('click',()=>showTab('me'));
 
 // Badges earned by older saves (before gamification existed) are granted silently on load.
@@ -1337,6 +1719,6 @@ return {
   // Sign-out: forget this device's progress and the open conversation.
   reset(){S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   setState(p){S=Object.assign(DEF(),p||{});checkBadges([]);renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},
-  refresh(){acctLabel();renderChat();renderHome();renderLearn();renderBoard()},
+  refresh(){acctLabel();renderChat();renderHome();renderLearn();renderBoard();if(!$('#v-me').classList.contains('hidden'))renderMe()},
 }
 }

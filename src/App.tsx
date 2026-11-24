@@ -1,4 +1,6 @@
 import { AdminDashboard } from './AdminDashboard'
+import { disablePush, enablePush, pushHour, pushStatus, registerSW, reportState } from './push'
+import type { PushStatus } from './push'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useAction, useConvexAuth, useMutation, useQuery } from 'convex/react'
@@ -28,6 +30,24 @@ const takeSignIn = () => {
     return v
   } catch {
     return false
+  }
+}
+// Initials of the signed-in account, kept so a page refresh doesn't flash the signed-out screen
+// while the session is being restored.
+const WHO_KEY = 'devenglish-who'
+const readWho = () => {
+  try {
+    return localStorage.getItem(WHO_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+const writeWho = (v: string) => {
+  try {
+    if (v) localStorage.setItem(WHO_KEY, v)
+    else localStorage.removeItem(WHO_KEY)
+  } catch {
+    /* ignore */
   }
 }
 const readOwner = () => {
@@ -113,6 +133,14 @@ function mergeProgress(a: Partial<GymProgress> | null, b: Partial<GymProgress> |
     // The account's roll wins: a guest roll only counts if the account hasn't rolled that day.
     diceDay: padDay(y.diceDay) >= padDay(x.diceDay) ? (y.diceDay ?? '') : (x.diceDay ?? ''),
     diceVal: padDay(y.diceDay) >= padDay(x.diceDay) ? (y.diceVal ?? 0) : (x.diceVal ?? 0),
+    // Today's Termo: the copy with more guesses wins.
+    termo: (() => {
+      const a = x.termo, b = y.termo
+      if (!a) return b
+      if (!b) return a
+      if (a.day !== b.day) return padDay(a.day) > padDay(b.day) ? a : b
+      return b.guesses.length >= a.guesses.length ? b : a
+    })(),
   }
 }
 
@@ -153,6 +181,11 @@ export default function App() {
   const reviewMistake = useMutation(api.mistakes.review)
   const track = useMutation(api.analytics.track)
   const tts = useAction(api.tts.speak)
+  const vapid = useQuery(api.push.publicKey)
+  const pushSubscribe = useMutation(api.push.subscribe)
+  const pushUnsubscribe = useMutation(api.push.unsubscribe)
+  const pushState = useMutation(api.push.state)
+  const pushInfo = useRef<{ status: PushStatus; hour: number }>({ status: 'unsupported', hour: pushHour() })
   const deleteAccount = useMutation(api.account.deleteAccount)
   const isAdmin = !!(quota && quota.admin)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -166,11 +199,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [isAdmin])
   const mergedFor = useRef<string | null>(null)
+  const lastServer = useRef('')
   const email = me && me.ok ? me.email : ''
 
   // The engine is mounted once; it reads the latest values through this ref.
-  const live = useRef({ isAuthenticated, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track })
-  live.current = { isAuthenticated, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track }
+  const live = useRef({ vapid, pushSubscribe, pushUnsubscribe, pushState, isAuthenticated, isLoading, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track })
+  live.current = { vapid, pushSubscribe, pushUnsubscribe, pushState, isAuthenticated, isLoading, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track }
 
   useEffect(() => {
     const host = hostRef.current
@@ -179,23 +213,50 @@ export default function App() {
       initial: () => readLocal(),
       save: (p) => {
         writeLocal(p)
+        if (pushInfo.current.status === 'on') void reportState(p.last || '', p.streak || 0, live.current.pushState)
         if (live.current.isAuthenticated) {
           void live.current.saveProgress(p).catch(() => undefined)
         }
       },
-      isAuthed: () => live.current.isAuthenticated,
+      // While the session is restoring, show the signed-in look if this device was signed in.
+      isAuthed: () => live.current.isAuthenticated || (live.current.isLoading && !!readWho()),
       login: (next) => {
         if (next === 'review') {
           try { sessionStorage.setItem(REVIEW_CHAT_KEY, '1') } catch {}
         }
         setModal('login')
       },
-      account: () => setModal(live.current.isAuthenticated ? 'account' : 'login'),
-      accountLabel: () => (live.current.isAuthenticated ? live.current.initials || 'Conta' : 'Entrar'),
+      account: () => {
+        if (live.current.isLoading) return
+        setModal(live.current.isAuthenticated ? 'account' : 'login')
+      },
+      accountLabel: () =>
+        live.current.isAuthenticated
+          ? live.current.initials || readWho() || 'Conta'
+          : live.current.isLoading && readWho()
+            ? readWho()
+            : 'Entrar',
       chat: (scenario, history, level) => live.current.chat({ scenario, history, level }),
       correct: (lessonId, text) => live.current.correct({ lessonId, text }),
       transcribe: (audio, mime) => live.current.transcribe({ audio, mime }),
       tts: (text, lang) => live.current.tts({ text, lang }),
+      push: () => pushInfo.current,
+      pushEnable: async (hour) => {
+        const key = live.current.vapid
+        if (!key) return pushInfo.current
+        const status = await enablePush(key, anonId(), hour, live.current.pushSubscribe).catch(() => 'off' as PushStatus)
+        pushInfo.current = { status, hour }
+        if (status === 'on') {
+          const p = readLocal()
+          if (p) void reportState(p.last || '', p.streak || 0, live.current.pushState)
+        }
+        return pushInfo.current
+      },
+      pushDisable: async () => {
+        const status = await disablePush(live.current.pushUnsubscribe)
+        pushInfo.current = { ...pushInfo.current, status }
+        return pushInfo.current
+      },
       addMistake: (wrong, better, tip) => {
         if (!live.current.isAuthenticated) return
         void live.current.addMistake({ wrong, better, tip }).catch(() => undefined)
@@ -217,6 +278,11 @@ export default function App() {
     })
     gymRef.current = handle
     setMounted(true)
+    // Service worker for reminders; then read whether this browser already has them on.
+    void registerSW().then(async () => {
+      pushInfo.current = { status: await pushStatus(), hour: pushHour() }
+      handle.refresh()
+    })
     // One "open" per device per day: daily actives and retention.
     try {
       const d = new Date().toISOString().slice(0, 10)
@@ -256,7 +322,26 @@ export default function App() {
   const quotaKey = quota ? `${quota.used}/${quota.limit}/${quota.admin}` : ''
   useEffect(() => {
     gymRef.current?.refresh()
-  }, [dueCount, quotaKey, initials])
+  }, [dueCount, quotaKey, initials, isAuthenticated, isLoading])
+  useEffect(() => {
+    if (isAuthenticated && initials) writeWho(initials)
+    else if (!isAuthenticated && !isLoading) writeWho('')
+  }, [isAuthenticated, isLoading, initials])
+
+  // While signed in, pick up what other devices saved (finished squares, today's games, Termo guesses).
+  // Merging only keeps the best of both, so nothing done here is lost.
+  useEffect(() => {
+    if (!isAuthenticated || !progress || !progress.ok || !progress.progress || !me || !me.ok) return
+    if (mergedFor.current !== me.email) return
+    const snap = JSON.stringify(progress.progress)
+    if (snap === lastServer.current) return
+    lastServer.current = snap
+    const local = readLocal()
+    const merged = mergeProgress(local, progress.progress)
+    if (JSON.stringify(merged) === JSON.stringify({ ...empty, ...(local ?? {}) })) return
+    writeLocal(merged)
+    gymRef.current?.setState(merged)
+  }, [isAuthenticated, progress, me])
 
   // After sign-in, merge this device's progress with the account's saved progress once.
   useEffect(() => {
@@ -274,6 +359,7 @@ export default function App() {
       merged.xp = (progress.progress.xp ?? 0) + (local.xp ?? 0)
     } else merged = mergeProgress(local, progress.progress)
     writeOwner(me.email)
+    lastServer.current = JSON.stringify(progress.progress)
     writeLocal(merged)
     gymRef.current?.setState(merged)
     void saveProgress(merged).catch(() => undefined)

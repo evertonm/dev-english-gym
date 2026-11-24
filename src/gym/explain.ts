@@ -50,7 +50,7 @@ export const EXPLAIN: Record<string, string[]> = {
   sounds: [
     "Algumas palavras de tecnologia não soam como se escrevem. Cache soa como cash, queue soa como kiu e suite soa como sweet. Toque em cada uma e repita em voz alta.",
     "Errar a sílaba forte confunde mais do que o sotaque. Em develop, a força está no meio: deVElop. Em engineer, está no final: engiNEER.",
-    "Em inglês, a letra I muitas vezes soa como ai, e a letra A como ei. Height soa como rait, data como deita. Ouça os exemplos.",
+    "Em inglês, a letra I muitas vezes soa como ai, e a letra A como ei. Height soa como ráit, com o H aspirado, e data soa como dêita. Ouça os exemplos.",
   ],
   conditionals: [
     "Para uma situação real que pode acontecer, use if com o presente, e will na consequência. Ótimo para falar de riscos e de plano B.",

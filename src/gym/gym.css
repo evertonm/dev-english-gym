@@ -946,3 +946,110 @@ html,body,#root{height:100%;margin:0}
 .gym .bossend{width:150px;height:150px;margin:0 auto}
 .gym .bossend.down{transform:rotate(-8deg);filter:grayscale(.55);opacity:.85}
 .gym .bossline{margin:4px 0 6px;font-weight:700;font-style:italic;color:hsl(var(--muted))}
+/* Pawn hop between squares, landing bounce and a soft glow on the current square */
+.gym .hopper{position:absolute;left:0;top:0;z-index:5;pointer-events:none;filter:drop-shadow(0 6px 6px hsl(var(--shadow) / .35))}
+.gym .hopper .mascot{width:100%;height:100%}
+.gym .tile.land{animation:landbounce .6s cubic-bezier(.3,1.6,.5,1)}
+@keyframes landbounce{0%{transform:scale(.92)}45%{transform:scale(1.08)}100%{transform:scale(1)}}
+.gym .tile.cur::after{content:"";position:absolute;inset:-5px;border-radius:inherit;border:3px solid hsl(var(--sun) / .7);animation:curglow 2.2s ease-in-out infinite;pointer-events:none}
+@keyframes curglow{0%,100%{opacity:0;transform:scale(.97)}50%{opacity:1;transform:scale(1.03)}}
+@media (prefers-reduced-motion:reduce){.gym .tile.cur::after,.gym .tile.land{animation:none}}
+/* Meme card: mascot or boss with a speech bubble */
+.gym .memecard{position:relative;display:flex;align-items:flex-start;gap:12px;padding:12px 40px 12px 12px;border-radius:18px;background:hsl(var(--surface));border:1px solid hsl(var(--line));box-shadow:var(--panel-shadow)}
+.gym .memecard .mav{flex:none;width:58px;height:58px;display:block}
+.gym .memecard .mav .mascot,.gym .memecard .mav .boss-av{width:100%;height:100%}
+.gym .memecard .mbub{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:14px;background:hsl(var(--accent) / .09);font-size:14.5px;line-height:1.4}
+.gym .memecard .mbub::before{content:"";position:absolute;left:-7px;top:16px;border:7px solid transparent;border-left:0;border-right-color:hsl(var(--accent) / .09)}
+.gym .memecard .mbub b{font-family:var(--display);font-size:14px;color:hsl(var(--accent))}
+.gym .memecard .mbub .btn.mini{align-self:flex-start;width:auto;min-height:0;padding:7px 14px;font-size:14px;margin-top:4px}
+.gym .memecard.m-risk .mbub{background:hsl(var(--tomato) / .1)}.gym .memecard.m-risk .mbub::before{border-right-color:hsl(var(--tomato) / .1)}
+.gym .memecard.m-goal .mbub{background:hsl(var(--mint, 160 60% 45%) / .12)}.gym .memecard.m-goal .mbub::before{border-right-color:hsl(var(--mint, 160 60% 45%) / .12)}
+.gym .memex{position:absolute;top:8px;right:8px;width:28px;height:28px;min-width:0;min-height:0;border:0;border-radius:50%;background:transparent;color:hsl(var(--muted));font-size:14px;cursor:pointer}
+.gym .memex:hover{background:hsl(var(--accent) / .1)}
+.gym .memecard .mbtns{display:flex;flex-wrap:wrap;gap:8px}
+.gym .memecard .mbtns:empty{display:none}
+.gym .remind{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:hsl(var(--surface));border:1px solid hsl(var(--line));font-size:14.5px;line-height:1.45}
+.gym .remind p{margin:0}
+.gym .remind .btn.mini{align-self:flex-start;width:auto;min-height:0;padding:8px 14px;font-size:14px}
+.gym .remind select{font:inherit;font-weight:800;color:hsl(var(--ink));background:hsl(var(--bg));border:1px solid hsl(var(--line));border-radius:10px;padding:3px 6px}
+/* Reminder ask on end screens: the big mascot above already talks, so no second avatar */
+.gym .end .pushask{text-align:left;padding:10px;margin:2px 0 6px}
+.gym .end .pushask .mav{display:none}
+.gym .end .pushask .mbub::before{display:none}
+.gym .end .pushask .mbtns{flex-wrap:nowrap}
+.gym .end .pushask .mbtns .btn.mini{margin-top:4px}
+/* Daily games (challenge, crossword) under the square card */
+.gym .daygames{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.gym .daygames .dg1{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:hsl(var(--surface));border:1px solid hsl(var(--line));box-shadow:var(--panel-shadow)}
+.gym .daygames .dgi{font-size:26px;line-height:1}
+.gym .daygames .dg1>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gym .daygames b{font-family:var(--display);font-size:17px}
+.gym .daygames small{font-size:12.5px;color:hsl(var(--muted))}
+.gym .daygames .btn.mini{flex:none;width:auto;min-height:0;padding:8px 14px;font-size:14px}
+/* Crossword */
+.gym .xgrid{--cell:min(38px,calc((100vw - 40px) / var(--cols)));display:grid;grid-template-columns:repeat(var(--cols),var(--cell));gap:3px;justify-content:center;margin:10px auto 14px}
+.gym .xb{width:var(--cell);height:var(--cell)}
+.gym .xc{position:relative;width:var(--cell);height:var(--cell);border-radius:7px;background:hsl(var(--surface));border:1.5px solid hsl(var(--line));display:block}
+.gym .xc small{position:absolute;top:1px;left:3px;font-size:9px;font-weight:800;line-height:1;color:hsl(var(--muted));pointer-events:none}
+.gym .xc input{width:100%;height:100%;border:0;background:transparent;text-align:center;font:800 calc(var(--cell) * .5)/1 var(--display);color:hsl(var(--ink));text-transform:uppercase;padding:0;caret-color:transparent;border-radius:6px}
+.gym .xc input:focus{outline:none}
+.gym .xc.on{background:hsl(var(--accent) / .12);border-color:hsl(var(--accent) / .5)}
+.gym .xc.cur{background:hsl(var(--sun) / .35);border-color:hsl(var(--sun-d))}
+.gym .xc.bad{background:hsl(var(--tomato) / .18);border-color:hsl(var(--tomato))}
+.gym .xc.rev input{color:hsl(var(--accent))}
+.gym .xclues{display:grid;gap:12px}
+.gym .xclues h3{margin:4px 0 6px;font-family:var(--display);font-size:16px}
+.gym .xclue{display:block;width:100%;text-align:left;font:inherit;font-size:14.5px;line-height:1.35;padding:8px 10px;margin-bottom:6px;border-radius:10px;border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--ink));cursor:pointer;min-height:0}
+.gym .xclue b{color:hsl(var(--accent));margin-right:4px}
+.gym .xclue small{color:hsl(var(--muted))}
+.gym .xclue.on{border-color:hsl(var(--accent));background:hsl(var(--accent) / .1)}
+.gym .xbtns{display:flex;gap:8px}
+.gym .xbtns .btn{flex:1;min-width:0;padding-inline:6px;font-size:15px}
+.gym .xend{margin-bottom:10px}
+@media (min-width:700px){.gym .xclues{grid-template-columns:1fr 1fr}}
+.gym .xlang{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 2px}
+.gym .xlang .pill{min-height:0;padding:7px 12px;font-size:13.5px}
+.gym .gchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.gym .gchips::-webkit-scrollbar{display:none}
+.gym .gchip{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:8px 14px;border-radius:999px;border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--ink));font:inherit;font-weight:800;font-size:14px;box-shadow:var(--panel-shadow);cursor:pointer}
+.gym .gchip:hover{border-color:hsl(var(--accent) / .55)}
+@media (min-width:900px){.gym .gchips{display:none}}
+@media (max-width:899px){.gym .bside .daygames{display:none}}
+/* Termo (Wordle-style) */
+.gym .tmgrid{display:flex;flex-direction:column;gap:6px;align-items:center;margin:10px 0 8px}
+.gym .tmrow{display:flex;gap:6px}
+.gym .tmrow.shake{animation:tmshake .35s}
+@keyframes tmshake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+.gym .tmc{width:min(56px,15vw);height:min(56px,15vw);display:grid;place-items:center;border:2px solid hsl(var(--line));border-radius:10px;font:800 min(28px,7.5vw)/1 var(--display);color:hsl(var(--ink));background:hsl(var(--surface))}
+.gym .tmc.typed{border-color:hsl(var(--muted))}
+.gym .tmc.sg,.gym .tmc.sy,.gym .tmc.sx{color:#fff;border-color:transparent;animation:tmflip .45s ease both}
+.gym .tmc.sg{background:#2FAE66}.gym .tmc.sy{background:#E0A928}.gym .tmc.sx{background:#6B6480}
+@keyframes tmflip{0%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+@media (prefers-reduced-motion:reduce){.gym .tmc.sg,.gym .tmc.sy,.gym .tmc.sx,.gym .tmrow.shake{animation:none}}
+.gym .tmmsg{text-align:center;font-weight:800;color:hsl(var(--tomato-d));margin:2px 0}
+.gym .tmkb{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.gym .tmkr{display:flex;gap:5px;justify-content:center}
+.gym .tmk{flex:1;max-width:44px;min-width:0;height:52px;min-height:0;padding:0;border:0;border-radius:8px;background:hsl(var(--accent) / .12);color:hsl(var(--ink));font:800 15px/1 var(--display);cursor:pointer}
+.gym .tmk.wide{flex:1.6;max-width:70px;font-size:12px}
+.gym .tmk.sg{background:#2FAE66;color:#fff}.gym .tmk.sy{background:#E0A928;color:#fff}.gym .tmk.sx{background:#6B6480;color:#fff;opacity:.75}
+.gym .tmend{text-align:center;margin:6px 0}
+.gym .tmword{display:flex;align-items:center;justify-content:center;gap:10px;font-size:17px;margin:6px 0}
+.gym .tmword b{font-family:var(--display);letter-spacing:2px;font-size:22px}
+.gym .tmk{display:grid;place-items:center;box-shadow:none;line-height:1}
+/* Termo: typing with the phone keyboard */
+.gym input.tmc{padding:0;text-align:center;text-transform:uppercase;caret-color:transparent;outline:none;appearance:none;-webkit-appearance:none}
+.gym input.tmc:focus{border-color:hsl(var(--accent));box-shadow:0 0 0 3px hsl(var(--accent) / .25)}
+.gym .tmrow.active .tmc{border-color:hsl(var(--accent) / .45)}
+.gym .tmabc{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin:6px 0 10px}
+.gym .tml{width:26px;height:30px;display:grid;place-items:center;border-radius:6px;font:800 13px/1 var(--display);background:hsl(var(--accent) / .1);color:hsl(var(--ink))}
+.gym .tml.sg{background:#2FAE66;color:#fff}.gym .tml.sy{background:#E0A928;color:#fff}.gym .tml.sx{background:#6B6480;color:#fff;opacity:.55}
+.gym .tmkb .btn{width:100%}
+.gym .emojiq{font-size:clamp(48px,14vw,72px);line-height:1.2;text-align:center;letter-spacing:6px;margin:8px 0 16px;padding:14px;border-radius:20px;background:hsl(var(--surface));border:1px solid hsl(var(--line))}
+.gym .eminput{width:100%;font:700 18px/1.3 inherit;padding:14px 16px;border-radius:14px;border:2px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--ink))}
+.gym .eminput:focus{outline:none;border-color:hsl(var(--accent))}
+.gym .eminput.shake{animation:tmshake .35s}
+.gym .emhints{list-style:none;padding:0;margin:0 0 12px;display:flex;flex-direction:column;gap:6px;font-size:15px}
+.gym .emhints li{padding:8px 12px;border-radius:12px;background:hsl(var(--sun) / .18)}
+.gym .empat{font-family:ui-monospace,monospace;font-weight:800;letter-spacing:1px}
+.gym .emcount{font-family:inherit;font-size:14px;color:hsl(var(--muted));font-weight:700}
+.gym .emhints li .empat{display:inline-block;margin-left:2px}

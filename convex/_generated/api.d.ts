@@ -14,6 +14,7 @@ import type * as admin from "../admin.js";
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as crypto from "../crypto.js";
 import type * as gymPrompts from "../gymPrompts.js";
 import type * as http from "../http.js";
@@ -21,6 +22,9 @@ import type * as migrations from "../migrations.js";
 import type * as mistakes from "../mistakes.js";
 import type * as perks from "../perks.js";
 import type * as progress from "../progress.js";
+import type * as push from "../push.js";
+import type * as pushMemes from "../pushMemes.js";
+import type * as pushNode from "../pushNode.js";
 import type * as tts from "../tts.js";
 
 import type {
@@ -36,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   analytics: typeof analytics;
   auth: typeof auth;
+  crons: typeof crons;
   crypto: typeof crypto;
   gymPrompts: typeof gymPrompts;
   http: typeof http;
@@ -43,6 +48,9 @@ declare const fullApi: ApiFromModules<{
   mistakes: typeof mistakes;
   perks: typeof perks;
   progress: typeof progress;
+  push: typeof push;
+  pushMemes: typeof pushMemes;
+  pushNode: typeof pushNode;
   tts: typeof tts;
 }>;
 
