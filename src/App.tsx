@@ -131,6 +131,7 @@ function anonId(): string {
 }
 
 type Modal = 'none' | 'login' | 'account' | 'admin'
+const REVIEW_CHAT_KEY = 'devenglish-review-chat-after-login'
 
 export default function App() {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -183,7 +184,12 @@ export default function App() {
         }
       },
       isAuthed: () => live.current.isAuthenticated,
-      login: () => setModal('login'),
+      login: (next) => {
+        if (next === 'review') {
+          try { sessionStorage.setItem(REVIEW_CHAT_KEY, '1') } catch {}
+        }
+        setModal('login')
+      },
       account: () => setModal(live.current.isAuthenticated ? 'account' : 'login'),
       accountLabel: () => (live.current.isAuthenticated ? live.current.initials || 'Conta' : 'Entrar'),
       chat: (scenario, history, level) => live.current.chat({ scenario, history, level }),
@@ -230,7 +236,18 @@ export default function App() {
   // Keep the header button and AI panel in sync with the sign-in state.
   useEffect(() => {
     gymRef.current?.refresh()
-    if (isAuthenticated) setModal((m) => (m === 'login' ? 'none' : m))
+    if (isAuthenticated) {
+      setModal((m) => (m === 'login' ? 'none' : m))
+      const gym = gymRef.current
+      if (gym) {
+        let continueReview = false
+        try {
+          continueReview = sessionStorage.getItem(REVIEW_CHAT_KEY) === '1'
+          sessionStorage.removeItem(REVIEW_CHAT_KEY)
+        } catch {}
+        if (continueReview) gym.openReviewChat()
+      }
+    }
     if (!isAuthenticated && !isLoading) mergedFor.current = null
   }, [isAuthenticated, isLoading, mounted])
 
@@ -270,7 +287,10 @@ export default function App() {
         </div>
       )}
       <div ref={hostRef} style={{ height: '100%' }} />
-      {modal === 'login' && <LoginSheet onClose={() => setModal('none')} />}
+      {modal === 'login' && <LoginSheet onClose={() => {
+        try { sessionStorage.removeItem(REVIEW_CHAT_KEY) } catch {}
+        setModal('none')
+      }} />}
       {modal === 'account' && (
         <div className="sheet-bg" role="dialog" aria-label="Sua conta">
           <div className="sheet">

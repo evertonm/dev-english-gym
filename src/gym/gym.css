@@ -426,6 +426,36 @@ html,body,#root{height:100%;margin:0}
 /* Board: a connected ring with a painted world in the middle. */
 .gym #v-board{padding:2px 9px 16px;gap:16px}
 .gym .bhead{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px 6px;padding:0 2px}
+.gym .workout-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  padding: clamp(14px, 2vw, 22px);
+  border: 1px solid hsl(var(--board-rim));
+  border-radius: 19px;
+  background: hsl(var(--board));
+}
+.gym .workout-card > div { flex: 1 1 270px; min-width: 0 }
+.gym .workout-card p { margin: 0; color: hsl(var(--muted)); font-size: 14px }
+.gym .workout-card .workout-meta { color: hsl(var(--brand)); font-weight: 800 }
+.gym .workout-card h2, .gym .workout-heading {
+  margin: 0;
+  font: 800 clamp(23px, 4.5vw, 30px)/1.12 var(--display);
+}
+.gym .workout-card h2 { margin-block: 4px }
+.gym .workout-card .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px }
+.gym .workout-card .btn svg { width: 19px; height: 19px }
+.gym .workout-quote { margin: 0; border-inline-start: 4px solid hsl(var(--accent)) }
+.gym .workout-form { display: grid; gap: 8px }
+.gym .workout-form label { font-weight: 800 }
+.gym .workout-response { white-space: pre-wrap; overflow-wrap: anywhere }
+.gym .workout-checklist { margin: 0; padding-inline-start: 1.4rem; color: hsl(var(--muted)) }
+.gym .workout-checklist li + li { margin-block-start: 8px }
+@media (max-width: 560px) {
+  .gym .workout-card .btn { width: 100% }
+}
 .gym .btitle{min-width:0;padding-left:5px}
 .gym .btitle h1{margin:0;font:800 clamp(27px,7.5vw,38px)/1 var(--display)}
 .gym .btitle p{margin:3px 0 0;color:hsl(var(--muted));font-size:clamp(12px,3.25vw,16px);line-height:1.25;overflow-wrap:anywhere}

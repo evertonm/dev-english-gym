@@ -5,11 +5,12 @@ import { internalMutation, mutation, query } from "./_generated/server"
 import type { MutationCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { RANKS, rankName, utcDay } from "./perks"
+import { brasiliaDay as brDay, isWorkoutId, summarizeWorkout, WORKOUT_EVENTS, workoutEventAllowed } from "../shared/workout"
 
 const GLOBAL_AI_CAP = Number(process.env.AI_GLOBAL_DAILY_LIMIT ?? 450)
 
 // First-party usage metrics (no cookies, no third parties). Devices are a random id kept in the browser.
-const NAMES = new Set(["open", "lesson_done", "unit_done", "board_done", "dice", "chest", "signup", "ai_call", "ai_limit", "stt"])
+const NAMES = new Set(["open", "lesson_done", "unit_done", "board_done", "dice", "chest", "signup", "ai_call", "ai_limit", "stt", ...Object.values(WORKOUT_EVENTS)])
 const ANON_RE = /^[a-z0-9]{8,40}$/
 
 export async function logEvent(ctx: MutationCtx, name: string, userId: Id<"users"> | null, anon = "", props = "") {
@@ -19,7 +20,7 @@ export async function logEvent(ctx: MutationCtx, name: string, userId: Id<"users
 export const track = mutation({
   args: { name: v.string(), anon: v.string(), props: v.optional(v.string()) },
   handler: async (ctx, { name, anon, props }) => {
-    if (!NAMES.has(name) || !ANON_RE.test(anon)) return
+    if (!NAMES.has(name) || !ANON_RE.test(anon) || !workoutEventAllowed(name, props)) return
     // Light abuse guard: at most 300 events per device per day.
     const today = await ctx.db
       .query("events")
@@ -49,7 +50,6 @@ export const summary = query({ args: {}, handler: async () => null })
 // ---------- Admin dashboard (ADMIN_EMAILS in the Convex dashboard) ----------
 // Days and hours are in Brasília time (UTC-3).
 const BR = -3 * 3600_000
-const brDay = (ts: number) => new Date(ts + BR).toISOString().slice(0, 10)
 const brHour = (ts: number) => new Date(ts + BR).getUTCHours()
 const WINDOW = 30
 // The app stores days as "2026-11-3" (local, unpadded); pad so they compare as strings.
@@ -75,9 +75,11 @@ export const dashboard = query({
     const hours = Array(24).fill(0) as number[]
     const lessons: Record<string, number> = {}
     const funnelDev = { open: new Set<string>(), lesson: new Set<string>() }
+    const workoutEvents: Parameters<typeof summarizeWorkout>[0] = []
     for (const e of events) {
       if (e.ts < since) continue
       const d = brDay(e.ts)
+      if (isWorkoutId(e.props)) workoutEvents.push({ name: e.name, props: e.props, anon: e.anon, day: d })
       if (e.name === "open" && e.anon) (openDays[e.anon] ??= new Set()).add(d)
       const p = per[d]
       if (!p) continue
@@ -180,6 +182,7 @@ export const dashboard = query({
         aiCap: GLOBAL_AI_CAP,
       },
       retention: { d1: c1 ? r1 / c1 : null, d1n: c1, d7: c7 ? r7 / c7 : null, d7n: c7 },
+      workout: summarizeWorkout(workoutEvents, days[0], today),
       days: days.map((d) => ({
         day: d,
         devices: per[d].devices.size,

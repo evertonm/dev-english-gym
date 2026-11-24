@@ -6,6 +6,8 @@ import { pronOf } from './pron'
 import { WHY } from './why'
 import { EXPLAIN } from './explain'
 import { BOSSES } from './bosses'
+import { brasiliaDay, WORKOUT_EVENTS, WORKOUT_IDS, workoutForDay } from '../../shared/workout'
+import { WORKOUTS } from './workout'
 import { ADV_SHORT } from './data-advanced'
 import { USA_SHORT } from './data-usa'
 // Attach each question's explanation to it, so it travels with the question into board quizzes too.
@@ -24,7 +26,7 @@ export type GymDeps = {
   initial: () => Partial<GymProgress> | null
   save: (p: GymProgress) => void
   isAuthed: () => boolean
-  login: () => void
+  login: (next?: 'review') => void
   account: () => void
   accountLabel: () => string
   chat: (scenario: string, history: { role: 'user' | 'assistant'; content: string }[], level: number) => Promise<AiResult>
@@ -38,7 +40,7 @@ export type GymDeps = {
   track: (name: string, props?: string) => void
 }
 export type AiQuota = { used: number; limit: number; rank: string; admin?: boolean; next: { xp: number; limit: number; rank: string } | null }
-export type GymHandle = { destroy: () => void; setState: (p: Partial<GymProgress>) => void; refresh: () => void; reset: () => void }
+export type GymHandle = { destroy: () => void; setState: (p: Partial<GymProgress>) => void; refresh: () => void; reset: () => void; openReviewChat: () => void }
 
 // Bolha: the mascot, a speech bubble wearing a headset.
 export const MASCOT = '<svg class="mascot" viewBox="0 0 120 120" aria-hidden="true"><path d="M14 46a46 40 0 0 1 92 0" fill="none" stroke="#2B1B5A" stroke-width="6" stroke-linecap="round"/><path d="M24 30h72a16 16 0 0 1 16 16v34a16 16 0 0 1-16 16H58l-20 16V96H24A16 16 0 0 1 8 80V46a16 16 0 0 1 16-16z" fill="#FFC93C" stroke="#2B1B5A" stroke-width="5" stroke-linejoin="round"/><rect x="4" y="46" width="14" height="26" rx="7" fill="#7B4DFF" stroke="#2B1B5A" stroke-width="4"/><rect x="102" y="46" width="14" height="26" rx="7" fill="#7B4DFF" stroke="#2B1B5A" stroke-width="4"/><circle cx="45" cy="58" r="7" fill="#2B1B5A"/><circle cx="75" cy="58" r="7" fill="#2B1B5A"/><circle cx="47.5" cy="55.5" r="2.4" fill="#fff"/><circle cx="77.5" cy="55.5" r="2.4" fill="#fff"/><circle cx="34" cy="71" r="5" fill="#FF8FA3" opacity=".8"/><circle cx="86" cy="71" r="5" fill="#FF8FA3" opacity=".8"/><path d="M50 72q10 10 20 0" fill="none" stroke="#2B1B5A" stroke-width="5" stroke-linecap="round"/></svg>';
@@ -533,10 +535,24 @@ function revClick(b){
   if(b.id==='ryes'||b.id==='rno'){gradeRev(b.id==='ryes');return}
 }
 
-function closeSession(){$('#sess').classList.add('hidden');sess=null;les=null;rev=null;dictSink=chatSink;if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}stopAudio();renderHome();renderLearn();boardSel=null;renderBoard()}
+// An open activity gets its own history entry, so the phone's back button closes it (and silences it).
+let sessHist=false;
+function openSess(){$('#sess').classList.remove('hidden');if(!sessHist){try{history.pushState({sess:1},'',location.pathname+location.search+'#atividade');sessHist=true}catch(e){}}}
+function closeSession(fromHistory){
+  const restoreWorkoutFocus = workout !== null;
+  workout = null;
+  if (restoreWorkoutFocus) {
+    $('.app').inert = false;
+    $('#sess').removeAttribute('aria-modal');
+    $('#sess').setAttribute('aria-label', 'Treino');
+  }
+  if(sessHist){sessHist=false;if(!fromHistory&&location.hash==='#atividade'){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}}
+  $('#sess').classList.add('hidden');sess=null;les=null;rev=null;dictSink=chatSink;if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}stopAudio();renderHome();renderLearn();boardSel=null;renderBoard();
+  if(restoreWorkoutFocus) $('[data-workout-start]')?.focus({preventScroll:true});
+}
 
 $('#sess').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;if(b.dataset.login){deps.login();return}if(rev){revClick(b);return}if(les){lessonClick(b);return}if(!sess)return;
+  const b=e.target.closest('button');if(!b)return;if(b.dataset.login){deps.login();return}if(workout){workoutClick(b);return}if(rev){revClick(b);return}if(les){lessonClick(b);return}if(!sess)return;
   if(b.id==='quit'||b.id==='back'){closeSession();return}
   if(b.id==='tochat'){closeSession();showTab('chat');return}
   if(b.dataset.act==='say'){speak(sess.cur.en);return}
@@ -810,7 +826,11 @@ function showTab(t,fromHistory){
   renderChat();
 }
 root.querySelector('nav.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)showTab(b.dataset.tab)});
-const onPop=()=>{const t=tabFromPath();if(t)showTab(t,true)};
+const onVis=()=>{if(!document.hidden&&boardVisible()&&renderedWorkoutDay!==workoutDay())renderBoard()};
+document.addEventListener('visibilitychange',onVis);
+const onPop=()=>{
+  if(sessHist&&location.hash!=='#atividade'&&!$('#sess').classList.contains('hidden')){closeSession(true);return}
+  const t=tabFromPath();if(t)showTab(t,true)};
 window.addEventListener('popstate',onPop);
 $('#v-home').addEventListener('click',e=>{if(e.target.closest('[data-review]')){startReview();return}const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}const b=e.target.closest('[data-start]');if(b)startSession(+b.dataset.start)});
 $('#v-learn').addEventListener('click',e=>{if(e.target.closest('[data-review]')){startReview();return}const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}const w=e.target.closest('[data-world]');if(w){boardW=+w.dataset.world;boardSel=null;showTab('board');return}const b=e.target.closest('[data-lesson]');if(b){startLesson(+b.dataset.lesson);return}const u=e.target.closest('[data-start]');if(u)startSession(+u.dataset.start)});
@@ -987,6 +1007,142 @@ function rankHud(){
   const r=rankOf(S.xp);
   return '<div class="bhud"><div class="gl"><span>'+esc(r.name)+'</span><b>'+S.xp+(r.next?' / '+r.next:'')+' XP</b></div><div class="prog"><i style="width:'+(r.pct*100)+'%"></i></div></div>';
 }
+/* ---------- guided work practice ---------- */
+let workout = null;
+let lastWorkoutOffer = '';
+let renderedWorkoutDay = 0;
+let workoutRefreshTimer = 0;
+const workoutDay = () => Number(brasiliaDay(Date.now()).replaceAll('-', ''));
+const trackWorkout = (event, id) => {
+  try { deps.track(event, id) } catch {}
+};
+
+function scheduleWorkoutRefresh() {
+  const now = Date.now();
+  const nextDay = Date.parse(brasiliaDay(now) + 'T03:00:00Z') + 86_400_000;
+  workoutRefreshTimer = setTimeout(() => {
+    if (boardVisible()) renderBoard();
+    scheduleWorkoutRefresh();
+  }, nextDay - now);
+}
+
+function workoutCard(id) {
+  const completed = Boolean(S.board[id]);
+  return `<section class="workout-card" aria-labelledby="workout-card-title">
+    <div>
+      <p class="workout-meta">Code review · 3 min</p>
+      <h2 id="workout-card-title">${esc(WORKOUTS[id].title)}</h2>
+      <p>${completed && id === WORKOUT_IDS[0] ? 'Amanhã tem outro cenário para aplicar o que você praticou.' : 'Escreva uma resposta em inglês e compare com um exemplo comentado.'}</p>
+    </div>
+    <button class="btn ${completed ? 'alt' : ''}" data-workout-start="${id}">${completed ? 'Praticar de novo' : 'Começar treino'} ${ARROW}</button>
+  </section>`;
+}
+
+function startWorkout(id) {
+  workout = { id, answer: '', stage: 'write', submitted: false, xp: 0 };
+  trackWorkout(WORKOUT_EVENTS.started, id);
+  $('.app').inert = true;
+  $('#sess').setAttribute('aria-label', 'Treino de code review');
+  $('#sess').setAttribute('aria-modal', 'true');
+  openSess();
+  renderWorkout();
+}
+
+function renderWorkout() {
+  const { id, answer, stage, xp } = workout;
+  const { title, context, comment, task, example, checklist, skill } = WORKOUTS[id];
+  const body = $('#sbody');
+  const footer = $('#fb');
+  footer.className = 'fb';
+  $('#bar').style.width = stage === 'write' ? '33%' : stage === 'feedback' ? '67%' : '100%';
+  if (stage === 'write') {
+    body.innerHTML = `<h2 id="workout-heading" class="workout-heading" tabindex="-1">${esc(title)}</h2>
+      <p class="note">${esc(context)}</p>
+      <blockquote class="card workout-quote"><span class="en" lang="en">${esc(comment)}</span></blockquote>
+      <form id="workout-form" class="workout-form">
+        <label for="workout-answer">Sua resposta em inglês</label>
+        <p id="workout-task" class="note">${esc(task)}</p>
+        <textarea id="workout-answer" lang="en" aria-describedby="workout-task" rows="4" maxlength="600" required>${esc(answer)}</textarea>
+      </form>`;
+    footer.innerHTML = '<button class="btn" type="submit" form="workout-form">Ver exemplo comentado</button>';
+  } else if (stage === 'feedback') {
+    body.innerHTML = `<h2 id="workout-heading" class="workout-heading" tabindex="-1">Compare sua resposta</h2>
+      <div class="card"><span class="pt">Sua resposta</span><span class="en workout-response" lang="en">${esc(answer)}</span></div>
+      <div class="card"><span class="pt">Uma resposta possível</span><span class="en" lang="en">${esc(example)}</span></div>
+      <ul class="workout-checklist">${checklist.map(item => '<li>' + esc(item) + '</li>').join('')}</ul>`;
+    footer.innerHTML = '<button class="btn" type="button" data-workout-action="finish">Concluir treino</button><button class="btn alt" type="button" data-workout-action="retry">Editar minha resposta</button>';
+  } else {
+    body.innerHTML = `<h2 id="workout-heading" class="workout-heading" tabindex="-1">Code review praticado!</h2>
+      <div class="card"><span class="pt">Você praticou</span><span class="en">${esc(skill)}</span></div>
+      ${xp ? '<p class="note">+' + xp + ' XP</p>' : ''}
+      ${id === WORKOUT_IDS[0] && workoutForDay(S.board, workoutDay()) === id ? '<p class="note">Volte amanhã para testar a mesma habilidade em outro PR.</p>' : ''}`;
+    footer.innerHTML = `<button class="btn" type="button" id="back">Voltar ao tabuleiro</button>
+      <button class="btn alt" type="button" data-workout-action="chat">${deps.isAuthed() ? 'Praticar com a IA' : 'Entrar para praticar com a IA'}</button>`;
+  }
+  body.scrollTop = 0;
+  $('#workout-heading').focus({preventScroll:true});
+}
+
+$('#sess').addEventListener('input', e => {
+  if (e.target.id === 'workout-answer') e.target.setCustomValidity('');
+});
+$('#sess').addEventListener('submit', e => {
+  if (!workout || e.target.id !== 'workout-form') return;
+  e.preventDefault();
+  const field = $('#workout-answer');
+  const answer = field.value.trim();
+  if (!answer) {
+    field.setCustomValidity('Escreva uma resposta em inglês para continuar.');
+    field.reportValidity();
+    return;
+  }
+  if (!workout.submitted) trackWorkout(WORKOUT_EVENTS.submitted, workout.id);
+  Object.assign(workout, { answer, stage: 'feedback', submitted: true });
+  renderWorkout();
+});
+$('#sess').addEventListener('keydown', e => {
+  if (workout && e.key === 'Escape') {
+    e.preventDefault();
+    closeSession();
+  }
+});
+
+function workoutClick(button) {
+  if (button.id === 'quit' || button.id === 'back') {
+    closeSession();
+    return;
+  }
+  if (button.dataset.workoutAction === 'retry') {
+    workout.stage = 'write';
+    renderWorkout();
+    $('#workout-answer').focus();
+  }
+  if (button.dataset.workoutAction === 'finish' && workout.stage === 'feedback') {
+    workout.stage = 'done';
+    if (!S.board[workout.id]) {
+      S.board[workout.id] = workoutDay();
+      workout.xp = award(20).total;
+      trackWorkout(WORKOUT_EVENTS.completed, workout.id);
+      sfx('win');
+    }
+    updateHeader();
+    renderWorkout();
+  }
+  if (button.dataset.workoutAction === 'chat') {
+    closeSession();
+    if (!deps.isAuthed()) {
+      deps.login('review');
+      return;
+    }
+    openReviewChat();
+  }
+}
+
+function openReviewChat() {
+  showTab('chat');
+  startScen('review');
+}
+
 function renderBoard(){
   updateHeader();
   const ol=openLv();if(boardW===null||boardW>LEVELS.length-1)boardW=ol;
@@ -1011,11 +1167,21 @@ function renderBoard(){
   else if(sel.k==='bau')btn=selDone?'<button class="btn" disabled>Baú aberto</button>':'<button class="btn" data-play>'+info.go+'</button>';
   else btn='<button class="btn" data-play>'+(selDone?info.again:info.go)+' '+ARROW+'</button>';
   const card='<section class="turn'+(info.av?' bossturn':'')+'">'+(info.av?'<span class="bossbig">'+info.av+'</span>':'')+'<span class="kick">'+kicker+'</span><h2>'+esc(info.title)+'</h2>'+(info.sub?'<p class="sub">'+esc(info.sub)+'</p>':'')+(info.ex?'<p class="ex">'+esc(info.ex)+'</p>':'')+(info.desc?'<p class="desc">'+esc(info.desc)+'</p>':'')+(info.xp?'<span class="meta">'+info.xp+'</span>':'')+btn+'</section>';
+  renderedWorkoutDay = workoutDay();
+  const workoutId = workoutForDay(S.board, renderedWorkoutDay);
   $('#v-board').innerHTML=
    '<div class="bhead"><div class="btitle"><h1>'+esc(WORLD[w])+'</h1><p>Mundo '+(w+1)+' · '+LEVELS[w].tag+' · '+(open?done+' de 16 casas concluídas':'bloqueado')+'</p></div>'+
    '<div class="wnav"><button class="wbtn" data-wprev aria-label="Mundo anterior"'+(w===0?' disabled':'')+'>'+CHEVRON+'</button><button class="wbtn" data-wnext aria-label="Próximo mundo"'+(w===LEVELS.length-1?' disabled':'')+'>'+CHEVRON+'</button></div>'+rankHud()+'</div>'+
-   saveNudge(true)+'<div class="bwrap"><div class="boardbox"><div class="ring">'+cells+center+'</div></div><aside class="bside">'+card+'</aside></div>';
+   workoutCard(workoutId)+saveNudge(true)+'<div class="bwrap"><div class="boardbox"><div class="ring">'+cells+center+'</div></div><aside class="bside">'+card+'</aside></div>';
+  if (boardVisible() && !document.hidden && (tabFromPath() ?? 'board') === 'board') {
+    const offer = renderedWorkoutDay + ':' + workoutId;
+    if (offer !== lastWorkoutOffer && !S.board[workoutId]) {
+      lastWorkoutOffer = offer;
+      trackWorkout(WORKOUT_EVENTS.offered, workoutId);
+    }
+  }
 }
+function boardVisible(){return !$('#v-board').classList.contains('hidden')&&$('#sess').classList.contains('hidden')}
 // On phones the tile card sits below the board: bring it (and its button) into view.
 function showTurn(){
   const c=document.querySelector('#v-board .turn');if(!c)return;
@@ -1041,6 +1207,8 @@ function playTile(t){
   if(t.k==='quiz'||t.k==='sprint'||t.k==='rev'||t.k==='chefe')startBoardQuiz(t.w,t);
 }
 $('#v-board').addEventListener('click',e=>{
+  const workoutButton = e.target.closest('[data-workout-start]');
+  if(workoutButton){startWorkout(workoutButton.dataset.workoutStart);return}
   const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}
   if(e.target.closest('[data-wprev]')){boardW=Math.max(0,boardW-1);boardSel=null;renderBoard();return}
   if(e.target.closest('[data-wnext]')){boardW=Math.min(LEVELS.length-1,boardW+1);boardSel=null;renderBoard();return}
@@ -1155,6 +1323,7 @@ $('#rankchip').addEventListener('click',()=>showTab('me'));
 // Badges earned by older saves (before gamification existed) are granted silently on load.
 {const ev=[];checkBadges(ev);if(ev.length)save()}
 renderBoard();renderLearn();renderHome();renderBook();renderChat();
+scheduleWorkoutRefresh();
 {const t0=tabFromPath();if(t0&&t0!=='board')showTab(t0,true)}
 // Wide screens float the toolbar over the board header: reserve exactly its width there.
 let tbObs=null;{const hd=root.querySelector('header.top');if(hd&&window.ResizeObserver){tbObs=new ResizeObserver(()=>root.style.setProperty('--tbw',Math.ceil(hd.getBoundingClientRect().width+20)+'px'));tbObs.observe(hd)}}
@@ -1163,7 +1332,8 @@ const acctLabel=()=>{const a=$('#acct');if(!a)return;const l=deps.accountLabel()
 $('#acct').addEventListener('click',()=>deps.account());
 acctLabel();
 return {
-  destroy(){window.removeEventListener('popstate',onPop);try{if(tbObs)tbObs.disconnect()}catch(e){}try{if(browserVoice())speechSynthesis.cancel()}catch(e){}try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
+  destroy(){clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);try{if(tbObs)tbObs.disconnect()}catch(e){}try{if(browserVoice())speechSynthesis.cancel()}catch(e){}try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
+  openReviewChat,
   // Sign-out: forget this device's progress and the open conversation.
   reset(){S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   setState(p){S=Object.assign(DEF(),p||{});checkBadges([]);renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},

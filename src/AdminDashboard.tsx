@@ -212,6 +212,7 @@ function Dashboard({ data, onClose }: { data: Dash; onClose: () => void }) {
   const metricTotal = data.days.reduce((s, d) => s + get(d, metric), 0)
   const top = data.funnel[0]?.n || 1
   const aiPct = t.aiCap ? Math.min(100, Math.round((t.aiToday / t.aiCap) * 100)) : 0
+  const workout = data.workout
 
   return (
     <div className="adm" role="dialog" aria-label="Painel de métricas">
@@ -237,6 +238,22 @@ function Dashboard({ data, onClose }: { data: Dash; onClose: () => void }) {
       </section>
 
       <div className="adm-grid2">
+        {workout && (
+          <section className="adm-card wide">
+            <h2>Piloto de code review</h2>
+            <div className="adm-tiles">
+              <Tile label="Viram o convite" value={num(workout.offered)} sub="aparelhos" />
+              <Tile label="Começaram o treino" value={num(workout.started)} sub="aparelhos" />
+              <Tile label="Enviaram uma resposta" value={num(workout.submitted)} sub="aparelhos" />
+              <Tile label="Concluíram o primeiro treino" value={num(workout.completed)} sub="aparelhos" />
+              <Tile
+                label="Concluíram outro cenário em até 7 dias"
+                value={pct(workout.eligible ? workout.returned / workout.eligible : null)}
+                sub={`${num(workout.returned)} de ${num(workout.eligible)} aparelhos com 7 dias completos`}
+              />
+            </div>
+          </section>
+        )}
         <section className="adm-card wide">
           <h2>Aparelhos ativos por dia</h2>
           <TimeChart kind="line" labels={labels} values={data.days.map((d) => d.devices)} unit="aparelhos" />

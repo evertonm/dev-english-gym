@@ -3,6 +3,7 @@ import { v } from "convex/values"
 import { getAuthUserId } from "@convex-dev/auth/server"
 import { logEvent } from "./analytics"
 import { MAX_XP_FIRST_SAVE, MAX_XP_GAIN_PER_DAY, utcDay } from "./perks"
+import { WORKOUT_IDS, isWorkoutId } from "../shared/workout"
 
 const ID_RE = /^[a-z0-9_-]{1,40}$/
 const DAY_RE = /^\d{4}-\d{1,2}-\d{1,2}$/
@@ -11,7 +12,11 @@ const DAY_RE = /^\d{4}-\d{1,2}-\d{1,2}$/
 const BOARD_RE = /^w\d{1,2}t\d{1,2}$/
 function cleanBoard(b: Record<string, number> | undefined): Record<string, number> {
   const out: Record<string, number> = {}
-  for (const [k, n] of Object.entries(b ?? {}).slice(0, 200)) if (BOARD_RE.test(k) && n > 0) out[k] = 1
+  for (const [k, n] of Object.entries(b ?? {}).slice(0, 200)) {
+    if (!(n > 0)) continue
+    if (BOARD_RE.test(k)) out[k] = 1
+    else if (isWorkoutId(k) && Number.isInteger(n) && n >= 20000101 && n <= 99991231) out[k] = n
+  }
   return out
 }
 
@@ -114,6 +119,10 @@ export const save = mutation({
       const gainedToday = existing.srvDay === day ? (existing.srvGain ?? 0) : 0
       const room = Math.max(0, MAX_XP_GAIN_PER_DAY - gainedToday)
       const xp = Math.max(existing.xp, Math.min(data.xp, existing.xp + room))
+      const previousBoard = cleanBoard(existing.board)
+      for (const id of WORKOUT_IDS) {
+        if (previousBoard[id] > (data.board[id] ?? 0)) data.board[id] = previousBoard[id]
+      }
       await ctx.db.patch(existing._id, { ...data, xp, srvDay: day, srvGain: gainedToday + (xp - existing.xp) })
       return { ok: true as const, xp }
     }
