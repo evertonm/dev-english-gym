@@ -9,6 +9,9 @@ import { api } from '@convex/_generated/api'
 import type { Id } from '@convex/_generated/dataModel'
 import { mountGym } from '@/gym/engine'
 import type { GymHandle, GymProgress } from '@/gym/engine'
+import { GUEST_PRACTICE_LIMIT, parseLoginResume } from '@/gym/guest-practice'
+import type { LoginResume } from '@/gym/guest-practice'
+import { GUEST_LIMIT_SEEN, GUEST_LIMIT_SIGNED_IN } from '../shared/guest-metrics'
 
 const LOCAL_KEY = 'devenglish'
 // Which account this device's progress belongs to (empty = played as a guest).
@@ -158,12 +161,14 @@ function anonId(): string {
   }
 }
 
-type Modal = 'none' | 'login' | 'account' | 'admin'
-const REVIEW_CHAT_KEY = 'devenglish-review-chat-after-login'
+type Modal = 'none' | 'login' | 'guest-login' | 'account' | 'admin'
+const LOGIN_RESUME_KEY = 'devenglish-resume-after-login'
 
 export default function App() {
   const hostRef = useRef<HTMLDivElement>(null)
   const gymRef = useRef<GymHandle | null>(null)
+  const loginResume = useRef<LoginResume | null>(null)
+  const loginTrigger = useRef<HTMLElement | null>(null)
   const [mounted, setMounted] = useState(false)
   const { isAuthenticated, isLoading } = useConvexAuth()
   const { signOut } = useAuthActions()
@@ -211,6 +216,7 @@ export default function App() {
     if (!host) return
     const handle = mountGym(host, {
       initial: () => readLocal(),
+      initialGuestProgress: () => readOwner() ? null : readLocal(),
       save: (p) => {
         writeLocal(p)
         if (pushInfo.current.status === 'on') void reportState(p.last || '', p.streak || 0, live.current.pushState)
@@ -220,11 +226,19 @@ export default function App() {
       },
       // While the session is restoring, show the signed-in look if this device was signed in.
       isAuthed: () => live.current.isAuthenticated || (live.current.isLoading && !!readWho()),
-      login: (next) => {
-        if (next === 'review') {
-          try { sessionStorage.setItem(REVIEW_CHAT_KEY, '1') } catch {}
+      practiceAccess: () => live.current.isAuthenticated ? 'member' : live.current.isLoading && readWho() ? 'restoring' : 'guest',
+      login: (target, limited = false) => {
+        const pending = target ? { target, limited } : null
+        if (limited && document.activeElement instanceof HTMLElement) loginTrigger.current = document.activeElement
+        if (limited && loginResume.current?.target !== target) {
+          void live.current.track({ name: GUEST_LIMIT_SEEN, anon: anonId() }).catch(() => undefined)
         }
-        setModal('login')
+        loginResume.current = pending
+        try {
+          if (pending) sessionStorage.setItem(LOGIN_RESUME_KEY, JSON.stringify(pending))
+          else sessionStorage.removeItem(LOGIN_RESUME_KEY)
+        } catch {}
+        setModal(limited ? 'guest-login' : 'login')
       },
       account: () => {
         if (live.current.isLoading) return
@@ -302,18 +316,7 @@ export default function App() {
   // Keep the header button and AI panel in sync with the sign-in state.
   useEffect(() => {
     gymRef.current?.refresh()
-    if (isAuthenticated) {
-      setModal((m) => (m === 'login' ? 'none' : m))
-      const gym = gymRef.current
-      if (gym) {
-        let continueReview = false
-        try {
-          continueReview = sessionStorage.getItem(REVIEW_CHAT_KEY) === '1'
-          sessionStorage.removeItem(REVIEW_CHAT_KEY)
-        } catch {}
-        if (continueReview) gym.openReviewChat()
-      }
-    }
+    if (isAuthenticated) setModal((m) => (m === 'login' || m === 'guest-login' ? 'none' : m))
     if (!isAuthenticated && !isLoading) mergedFor.current = null
   }, [isAuthenticated, isLoading, mounted])
 
@@ -365,6 +368,22 @@ export default function App() {
     void saveProgress(merged).catch(() => undefined)
   }, [isAuthenticated, progress, me, saveProgress])
 
+  // Resume only after Convex confirms authentication and the guest progress has merged.
+  useEffect(() => {
+    const gym = gymRef.current
+    if (!gym || !isAuthenticated || !progress?.ok || !me?.ok || mergedFor.current !== me.email || modal === 'login' || modal === 'guest-login') return
+    let pending = loginResume.current
+    loginResume.current = null
+    try {
+      pending ??= parseLoginResume(sessionStorage.getItem(LOGIN_RESUME_KEY))
+      sessionStorage.removeItem(LOGIN_RESUME_KEY)
+    } catch {}
+    if (!pending) return
+    loginTrigger.current = null
+    if (pending.limited) void track({ name: GUEST_LIMIT_SIGNED_IN, anon: anonId() }).catch(() => undefined)
+    gym.resumePractice(pending.target)
+  }, [isAuthenticated, progress, me, mounted, modal, track])
+
   return (
     <div className="gym">
       {!mounted && (
@@ -372,10 +391,19 @@ export default function App() {
           Dev English
         </div>
       )}
-      <div ref={hostRef} style={{ height: '100%' }} />
-      {modal === 'login' && <LoginSheet onClose={() => {
-        try { sessionStorage.removeItem(REVIEW_CHAT_KEY) } catch {}
+      <div ref={hostRef} style={{ height: '100%' }} inert={modal === 'guest-login'} />
+      {(modal === 'login' || modal === 'guest-login') && <LoginSheet key={modal} limited={modal === 'guest-login'} onClose={() => {
+        loginResume.current = null
+        try { sessionStorage.removeItem(LOGIN_RESUME_KEY) } catch {}
         setModal('none')
+        if (modal === 'guest-login') {
+          const trigger = loginTrigger.current
+          loginTrigger.current = null
+          requestAnimationFrame(() => {
+            if (trigger?.isConnected && hostRef.current?.contains(trigger)) trigger.focus({ preventScroll: true })
+            else hostRef.current?.querySelector<HTMLElement>('.today-practice .btn')?.focus({ preventScroll: true })
+          })
+        }
       }} />}
       {modal === 'account' && (
         <div className="sheet-bg" role="dialog" aria-label="Sua conta">
@@ -467,12 +495,16 @@ export default function App() {
   )
 }
 
-function LoginSheet({ onClose }: { onClose: () => void }) {
+function LoginSheet({ limited, onClose }: { limited: boolean; onClose: () => void }) {
   const { signIn } = useAuthActions()
   const providers = useQuery(api.account.providers)
-  const [flow, setFlow] = useState<'signIn' | 'signUp'>('signIn')
+  const [flow, setFlow] = useState<'signIn' | 'signUp'>(limited ? 'signUp' : 'signIn')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const titleRef = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (limited) titleRef.current?.focus()
+  }, [limited])
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -505,10 +537,18 @@ function LoginSheet({ onClose }: { onClose: () => void }) {
   }
 
   const signUp = flow === 'signUp'
+  const title = limited ? 'Salve seu progresso e continue treinando' : signUp ? 'Criar conta grátis' : 'Entrar'
   return (
-    <div className="sheet-bg" role="dialog" aria-label={signUp ? 'Criar conta' : 'Entrar'}>
+    <div className="sheet-bg" role="dialog" aria-label={title} aria-modal={limited || undefined} onKeyDown={(event) => {
+      if (event.key === 'Escape') onClose()
+    }}>
       <div className="sheet">
-        <p className="sheet-title">{signUp ? 'Criar conta grátis' : 'Entrar'}</p>
+        <p className="sheet-title" ref={titleRef} tabIndex={limited ? -1 : undefined}>{title}</p>
+        {limited && (
+          <p className="note">
+            Você concluiu suas {GUEST_PRACTICE_LIMIT} atividades grátis. Crie uma conta em poucos passos para guardar seu XP e continuar de onde parou.
+          </p>
+        )}
         {(providers?.google || providers?.linkedin) && (
           <div className="social">
             {providers?.google && (
@@ -533,7 +573,7 @@ function LoginSheet({ onClose }: { onClose: () => void }) {
           </div>
         )}
         <form onSubmit={submit} className="sheet-form">
-          <p className="note">Salve seu progresso em qualquer aparelho e converse com a IA.</p>
+          {!limited && <p className="note">Salve seu progresso em qualquer aparelho e converse com a IA.</p>}
           <input name="email" type="email" required autoComplete="email" placeholder="seu@email.com" aria-label="E-mail" />
           <input
             name="password"

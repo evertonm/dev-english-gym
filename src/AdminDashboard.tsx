@@ -238,6 +238,24 @@ function Dashboard({ data, onClose }: { data: Dash; onClose: () => void }) {
       </section>
 
       <div className="adm-grid2">
+        {data.guestLimit && (
+          <section className="adm-card wide">
+            <h2>Convite para entrar após 3 atividades</h2>
+            <div className="adm-tiles">
+              <Tile label="Viram o convite" value={num(data.guestLimit.seen)} sub="aparelhos" />
+              <Tile label="Entraram após o convite" value={num(data.guestLimit.signedIn)} sub="aparelhos" />
+              <Tile
+                label="Conversão do convite"
+                value={pct(data.guestLimit.seen ? data.guestLimit.signedIn / data.guestLimit.seen : null)}
+              />
+              <Tile
+                label="Voltaram para praticar em até 7 dias"
+                value={pct(data.guestLimit.eligible ? data.guestLimit.returned / data.guestLimit.eligible : null)}
+                sub={`${num(data.guestLimit.returned)} de ${num(data.guestLimit.eligible)} contas com 7 dias completos`}
+              />
+            </div>
+          </section>
+        )}
         {workout && (
           <section className="adm-card wide">
             <h2>Piloto de code review</h2>

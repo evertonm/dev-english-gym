@@ -6,11 +6,12 @@ import type { MutationCtx } from "./_generated/server"
 import type { Id } from "./_generated/dataModel"
 import { RANKS, rankName, utcDay } from "./perks"
 import { brasiliaDay as brDay, isWorkoutId, summarizeWorkout, WORKOUT_EVENTS, workoutEventAllowed } from "../shared/workout"
+import { GUEST_LIMIT_SEEN, GUEST_LIMIT_SIGNED_IN, guestMetricEvents, summarizeGuestLimit } from "../shared/guest-metrics"
 
 const GLOBAL_AI_CAP = Number(process.env.AI_GLOBAL_DAILY_LIMIT ?? 450)
 
 // First-party usage metrics (no cookies, no third parties). Devices are a random id kept in the browser.
-const NAMES = new Set(["open", "lesson_done", "unit_done", "board_done", "dice", "chest", "signup", "ai_call", "ai_limit", "stt", ...Object.values(WORKOUT_EVENTS)])
+const NAMES = new Set(["open", "lesson_done", "unit_done", "board_done", "dice", "chest", "signup", "ai_call", "ai_limit", "stt", GUEST_LIMIT_SEEN, GUEST_LIMIT_SIGNED_IN, ...Object.values(WORKOUT_EVENTS)])
 const ANON_RE = /^[a-z0-9]{8,40}$/
 
 export async function logEvent(ctx: MutationCtx, name: string, userId: Id<"users"> | null, anon = "", props = "") {
@@ -21,13 +22,15 @@ export const track = mutation({
   args: { name: v.string(), anon: v.string(), props: v.optional(v.string()) },
   handler: async (ctx, { name, anon, props }) => {
     if (!NAMES.has(name) || !ANON_RE.test(anon) || !workoutEventAllowed(name, props)) return
+    const userId = await getAuthUserId(ctx)
+    if (name === GUEST_LIMIT_SIGNED_IN && !userId) return
     // Light abuse guard: at most 300 events per device per day.
     const today = await ctx.db
       .query("events")
       .withIndex("by_anon_day", (q) => q.eq("anon", anon).eq("day", utcDay()))
       .take(301)
     if (today.length > 300) return
-    await logEvent(ctx, name, await getAuthUserId(ctx), anon, props ?? "")
+    await logEvent(ctx, name, userId, props ?? "")
   },
 })
 
@@ -76,6 +79,7 @@ export const dashboard = query({
     const lessons: Record<string, number> = {}
     const funnelDev = { open: new Set<string>(), lesson: new Set<string>() }
     const workoutEvents: Parameters<typeof summarizeWorkout>[0] = []
+    const guestEvents: Parameters<typeof summarizeGuestLimit>[0] = []
     for (const e of events) {
       if (e.ts < since) continue
       const d = brDay(e.ts)
@@ -87,6 +91,7 @@ export const dashboard = query({
       if (e.anon) p.devices.add(e.anon)
       if (e.userId) p.users.add(e.userId)
       bump(d, e.name)
+      if (guestMetricEvents.has(e.name)) guestEvents.push({ name: e.name, anon: e.anon, day: d, userId: e.userId })
       if (e.name === "lesson_done" && e.props) lessons[e.props] = (lessons[e.props] ?? 0) + 1
       if (e.anon && e.name === "open") funnelDev.open.add(e.anon)
       if (e.anon && (e.name === "lesson_done" || e.name === "unit_done" || e.name === "board_done")) funnelDev.lesson.add(e.anon)
@@ -183,6 +188,7 @@ export const dashboard = query({
       },
       retention: { d1: c1 ? r1 / c1 : null, d1n: c1, d7: c7 ? r7 / c7 : null, d7n: c7 },
       workout: summarizeWorkout(workoutEvents, days[0], today),
+      guestLimit: summarizeGuestLimit(guestEvents, today),
       days: days.map((d) => ({
         day: d,
         devices: per[d].devices.size,

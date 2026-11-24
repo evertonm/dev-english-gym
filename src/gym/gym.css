@@ -425,40 +425,16 @@ html,body,#root{height:100%;margin:0}
 .gym .toast b{color:hsl(var(--sun))}
 /* Board: a connected ring with a painted world in the middle. */
 .gym #v-board{padding:2px 9px 16px;gap:16px}
-.gym .bhead{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px 6px;padding:0 2px}
-.gym .workout-card {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px 24px;
-  padding: clamp(14px, 2vw, 22px);
-  border: 1px solid hsl(var(--board-rim));
-  border-radius: 19px;
-  background: hsl(var(--board));
-}
-.gym .workout-card > div { flex: 1 1 270px; min-width: 0 }
-.gym .workout-card p { margin: 0; color: hsl(var(--muted)); font-size: 14px }
-.gym .workout-card .workout-meta { color: hsl(var(--brand)); font-weight: 800 }
-.gym .workout-card h2, .gym .workout-heading {
+.gym .workout-heading {
   margin: 0;
   font: 800 clamp(23px, 4.5vw, 30px)/1.12 var(--display);
 }
-.gym .workout-card h2 { margin-block: 4px }
-.gym .workout-card .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px }
-.gym .workout-card .btn svg { width: 19px; height: 19px }
 .gym .workout-quote { margin: 0; border-inline-start: 4px solid hsl(var(--accent)) }
 .gym .workout-form { display: grid; gap: 8px }
 .gym .workout-form label { font-weight: 800 }
 .gym .workout-response { white-space: pre-wrap; overflow-wrap: anywhere }
 .gym .workout-checklist { margin: 0; padding-inline-start: 1.4rem; color: hsl(var(--muted)) }
 .gym .workout-checklist li + li { margin-block-start: 8px }
-@media (max-width: 560px) {
-  .gym .workout-card .btn { width: 100% }
-}
-.gym .btitle{min-width:0;padding-left:5px}
-.gym .btitle h1{margin:0;font:800 clamp(27px,7.5vw,38px)/1 var(--display)}
-.gym .btitle p{margin:3px 0 0;color:hsl(var(--muted));font-size:clamp(12px,3.25vw,16px);line-height:1.25;overflow-wrap:anywhere}
 .gym .wnav{display:flex;gap:4px}
 .gym .wbtn{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;color:hsl(var(--muted))}
 .gym .wbtn svg{width:34px;height:30px;padding:5px;border-radius:10px;background:hsl(var(--accent) / .15)}
@@ -470,7 +446,6 @@ html,body,#root{height:100%;margin:0}
 .gym .bhud .gl b{color:hsl(var(--muted));font:800 13px/1 var(--body)}
 .gym .bhud .prog{height:12px;background:hsl(var(--track))}
 .gym .bhud .prog i,.gym .sbar .prog i{background:var(--purple-fill);box-shadow:none}
-.gym .bwrap{display:flex;flex-direction:column;gap:16px}
 .gym .boardbox{
   position:relative;min-width:0;width:100%;background:radial-gradient(ellipse at 45% 43%,hsl(var(--board-glow)),transparent 67%),hsl(var(--board));
   border:2px solid hsl(var(--board-line));border-radius:clamp(24px,6vw,45px);padding:clamp(9px,2.6vw,14px);
@@ -572,7 +547,6 @@ html,body,#root{height:100%;margin:0}
 .gym .turn .meta{font-size:13px;font-weight:800;color:hsl(var(--muted))}
 .gym .turn .btn{display:flex;align-items:center;justify-content:center;gap:12px;margin:4px 0 0}
 .gym .turn .btn svg{width:21px;height:21px}
-.gym .bside{min-width:0}
 .gym .lvhead .btn.mini{flex:none}
 
 
@@ -821,12 +795,7 @@ html,body,#root{height:100%;margin:0}
   .gym nav.tabs button svg{width:28px;height:28px}
   .gym #v-board{padding:4px clamp(18px,1.7vw,28px) 24px;gap:19px}
   .gym #v-board > *{max-width:1240px}
-  .gym .bhead{padding:0 0 0 9px;gap:12px}
-  .gym .btitle{padding-left:0}
-  .gym .btitle h1{font-size:clamp(34px,3.5vw,49px)}
-  .gym .btitle p{font-size:clamp(14px,1.45vw,19px)}
   .gym .wnav{margin:0;align-self:center}
-  .gym .boardbox,.gym .bside{max-width:690px;margin-inline:auto;width:100%}
   .gym .bhud{padding:10px 16px}
   .gym .bhud .gl{font-size:23px}
   .gym .bhud .gl b{font-size:16px}
@@ -837,15 +806,11 @@ html,body,#root{height:100%;margin:0}
   .gym .app:has(#v-board:not(.hidden)){grid-template-rows:minmax(0,1fr) auto;grid-template-areas:"nav main" "nav comp"}
   .gym .app:has(#v-board:not(.hidden)) header.top{position:absolute;top:12px;right:max(16px,calc((100% - var(--sidebar) - 1240px) / 2));z-index:4;padding:0;min-height:62px}
   .gym #v-board{padding-top:17px;gap:17px}
-  .gym .bhead{grid-template-columns:minmax(0,.87fr) auto minmax(210px,1.13fr);gap:12px;padding:0 var(--tbw,300px) 0 14px;min-height:82px}
   .gym .bhud{grid-row:auto;grid-column:auto;margin-left:clamp(8px,3.2vw,58px)}
-  .gym .btitle p{width:max-content;max-width:calc(100% + 84px)}
   .gym .wnav{align-self:start;padding-top:4px}
   .gym .wbtn svg{width:42px;height:33px}
   .gym .bcenter:not(:has(.lockmsg)){justify-content:flex-start;padding-top:0}
   .gym .bcenter:not(:has(.lockmsg)) .art svg{max-height:37cqw}
-  .gym .bwrap{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);align-items:start;gap:16px}
-  .gym .boardbox,.gym .bside{max-width:none}
   .gym .boardbox{padding:clamp(17px,1.6vw,25px)}
   .gym .turn{margin-top:16px;padding:17px clamp(14px,1.5vw,22px) 21px;border-radius:19px;gap:7px}
   .gym .turn .kick{font-size:16px}
@@ -859,7 +824,6 @@ html,body,#root{height:100%;margin:0}
 }
 @media (max-width:560px){
   .gym .wbtn:disabled{display:none}
-  .gym .btitle p{max-width:100%}
   .gym .ptier{grid-template-columns:minmax(72px,28%) minmax(0,1fr) auto;gap:8px;padding:9px}
 }
 @media (max-width:380px){
@@ -867,7 +831,6 @@ html,body,#root{height:100%;margin:0}
   .gym .brand svg{width:32px}
   .gym .stat.fire b{font-size:19px}
   .gym .stat.fire svg{width:15px}
-  .gym .bhead{row-gap:14px}
 }
 
 
@@ -921,11 +884,6 @@ html,body,#root{height:100%;margin:0}
 .gym .lvpick{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:hsl(var(--muted))}
 .gym .lvpick select{font:inherit;font-weight:800;color:hsl(var(--ink));background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:999px;padding:6px 10px}
 /* Guest nudge: save progress by signing in (never blocks). */
-.gym .savebox{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:hsl(var(--accent) / .1);border:1px solid hsl(var(--accent) / .35);color:hsl(var(--ink));font-size:14.5px;line-height:1.4;text-align:left}
-.gym .savebox.mini{flex-direction:row;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;font-size:13.5px}
-.gym .savebox.mini .btn{flex:none;width:auto;padding:8px 14px;font-size:14px;min-height:0}
-.gym .end .savebox{margin:6px 0 4px}
-@media (max-width:520px){.gym .savebox.mini{flex-direction:column;align-items:stretch}.gym .savebox.mini .btn{width:100%}}
 /* Lesson narration toggle and spoken explanation */
 .gym .narr{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;font-weight:800;padding:6px 12px;border-radius:999px;border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--accent));cursor:pointer;margin-bottom:4px}
 .gym .narr[aria-pressed="false"]{color:hsl(var(--muted))}
@@ -962,10 +920,6 @@ html,body,#root{height:100%;margin:0}
 .gym .memecard .mbub::before{content:"";position:absolute;left:-7px;top:16px;border:7px solid transparent;border-left:0;border-right-color:hsl(var(--accent) / .09)}
 .gym .memecard .mbub b{font-family:var(--display);font-size:14px;color:hsl(var(--accent))}
 .gym .memecard .mbub .btn.mini{align-self:flex-start;width:auto;min-height:0;padding:7px 14px;font-size:14px;margin-top:4px}
-.gym .memecard.m-risk .mbub{background:hsl(var(--tomato) / .1)}.gym .memecard.m-risk .mbub::before{border-right-color:hsl(var(--tomato) / .1)}
-.gym .memecard.m-goal .mbub{background:hsl(var(--mint, 160 60% 45%) / .12)}.gym .memecard.m-goal .mbub::before{border-right-color:hsl(var(--mint, 160 60% 45%) / .12)}
-.gym .memex{position:absolute;top:8px;right:8px;width:28px;height:28px;min-width:0;min-height:0;border:0;border-radius:50%;background:transparent;color:hsl(var(--muted));font-size:14px;cursor:pointer}
-.gym .memex:hover{background:hsl(var(--accent) / .1)}
 .gym .memecard .mbtns{display:flex;flex-wrap:wrap;gap:8px}
 .gym .memecard .mbtns:empty{display:none}
 .gym .remind{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:hsl(var(--surface));border:1px solid hsl(var(--line));font-size:14.5px;line-height:1.45}
@@ -979,13 +933,6 @@ html,body,#root{height:100%;margin:0}
 .gym .end .pushask .mbtns{flex-wrap:nowrap}
 .gym .end .pushask .mbtns .btn.mini{margin-top:4px}
 /* Daily games (challenge, crossword) under the square card */
-.gym .daygames{display:flex;flex-direction:column;gap:10px;margin-top:12px}
-.gym .daygames .dg1{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:hsl(var(--surface));border:1px solid hsl(var(--line));box-shadow:var(--panel-shadow)}
-.gym .daygames .dgi{font-size:26px;line-height:1}
-.gym .daygames .dg1>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.gym .daygames b{font-family:var(--display);font-size:17px}
-.gym .daygames small{font-size:12.5px;color:hsl(var(--muted))}
-.gym .daygames .btn.mini{flex:none;width:auto;min-height:0;padding:8px 14px;font-size:14px}
 /* Crossword */
 .gym .xgrid{--cell:min(38px,calc((100vw - 40px) / var(--cols)));display:grid;grid-template-columns:repeat(var(--cols),var(--cell));gap:3px;justify-content:center;margin:10px auto 14px}
 .gym .xb{width:var(--cell);height:var(--cell)}
@@ -1009,12 +956,166 @@ html,body,#root{height:100%;margin:0}
 @media (min-width:700px){.gym .xclues{grid-template-columns:1fr 1fr}}
 .gym .xlang{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 2px}
 .gym .xlang .pill{min-height:0;padding:7px 12px;font-size:13.5px}
-.gym .gchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
-.gym .gchips::-webkit-scrollbar{display:none}
-.gym .gchip{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:8px 14px;border-radius:999px;border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--ink));font:inherit;font-weight:800;font-size:14px;box-shadow:var(--panel-shadow);cursor:pointer}
-.gym .gchip:hover{border-color:hsl(var(--accent) / .55)}
-@media (min-width:900px){.gym .gchips{display:none}}
-@media (max-width:899px){.gym .bside .daygames{display:none}}
+
+/* Practice first, with the complete board alongside it on desktop. */
+.gym .practice-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 20px;
+}
+.gym .practice-heading h1 {
+  margin: 0;
+  font: 800 clamp(25px, 4vw, 43px)/1.1 var(--display);
+}
+.gym .practice-heading .bhud {
+  flex: 0 1 215px;
+  margin: 0;
+  padding: 6px 10px;
+  box-shadow: none;
+}
+.gym .practice-heading .bhud .gl { margin-bottom: 4px; font-size: 15px }
+.gym .practice-heading .bhud .gl b { font-size: 11px }
+.gym .practice-heading .bhud .prog { height: 6px }
+.gym .practice-grid { display: grid; align-items: start; gap: 14px }
+.gym .today-practice, .gym .world-panel {
+  min-width: 0;
+  border: 1px solid hsl(var(--board-rim));
+  border-radius: 19px;
+  background: hsl(var(--surface));
+  padding: clamp(14px, 2vw, 22px);
+}
+.gym .today-practice {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  background: hsl(var(--board));
+}
+.gym .today-label, .gym .world-label {
+  color: hsl(var(--brand));
+  font: 800 19px/1.1 var(--display);
+}
+.gym .today-label { display: flex; align-items: center; gap: 8px }
+.gym .today-label .mascot { width: 34px; height: 34px }
+.gym .today-practice h2 {
+  margin: 0;
+  font: 800 clamp(24px, 4vw, 37px)/1.1 var(--display);
+}
+.gym .today-practice p, .gym .world-head p {
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 14px;
+}
+.gym .today-duration { font-weight: 800; font-size: 14px }
+.gym .today-practice .btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.gym .today-practice .btn svg { width: 20px; height: 20px }
+.gym .today-practice .today-allowance { font-size: 12px }
+.gym .today-extra { min-height: 36px; color: hsl(var(--accent)); font-weight: 800; text-decoration: underline }
+.gym .world-panel { display: grid; gap: 12px }
+.gym .world-head { display: flex; align-items: center; justify-content: space-between; gap: 8px }
+.gym .world-head h2 { margin: 4px 0 2px; font: 800 clamp(22px, 3.4vw, 30px)/1.1 var(--display) }
+.gym .world-toggle { justify-self: start; min-height: 44px; box-shadow: none }
+.gym .world-board { display: none; min-width: 0 }
+.gym .world-panel.expanded .world-board { display: block }
+.gym .world-board .boardbox { margin: 0; max-width: none; padding: clamp(8px, 1.6vw, 17px) }
+.gym .world-board .turn { margin-top: 12px }
+.gym .world-board .turn .btn { min-height: 44px; font-size: 17px }
+.gym .world-board .tile.locked { opacity: .52; cursor: default }
+.gym .world-board .tile:disabled { cursor: default }
+.gym .quick-games { display: grid; gap: 8px }
+.gym .quick-games h2 { margin: 0; font: 800 clamp(21px, 3vw, 27px)/1.1 var(--display) }
+.gym .quick-games-list { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.gym .quick-game {
+  color: hsl(var(--ink));
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  gap: 7px;
+  align-items: center;
+  text-align: start;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--line));
+  border-radius: 12px;
+  background: hsl(var(--surface));
+  font-weight: 800;
+  font-size: 14px;
+}
+.gym .quick-game:hover { border-color: hsl(var(--control-line)) }
+.gym .quick-game-done { margin-left: auto; color: hsl(var(--check)) }
+@media (min-width: 900px) {
+  .gym .practice-grid { grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); gap: 18px }
+  .gym .world-toggle { display: none }
+  .gym .world-board { display: block }
+  .gym .world-board .boardbox { max-width: 550px; margin-inline: auto }
+  .gym .quick-games-list { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+}
+@media (min-width: 1200px) {
+  .gym .practice-heading { padding-inline-end: var(--tbw, 270px); min-height: 62px }
+}
+@media (max-width: 480px) {
+  .gym .practice-heading { flex-wrap: nowrap }
+  .gym .practice-heading .bhud { flex-basis: 165px; min-width: 0 }
+  .gym .practice-heading .bhud .gl { gap: 5px; font-size: 13px }
+}
+
+.gym .share-text-action {
+  align-self: center;
+  min-height: 42px;
+  color: hsl(var(--brand));
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: underline;
+}
+.gym .boss-learned { text-align: start; margin-inline: auto; padding: 12px 16px; border-radius: 14px; background: hsl(var(--accent) / .10) }
+.gym .boss-learned ul { margin: 4px 0 0; padding-inline-start: 1.25rem }
+.gym .boss-learned p { margin: 9px 0 0 }
+.gym .profile-share { display: grid; gap: 9px }
+.gym .profile-share h2 { margin: 0; font: 800 22px/1.15 var(--display) }
+.gym .profile-share select {
+  min-height: 44px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid hsl(var(--control-line));
+  border-radius: 11px;
+  background: hsl(var(--surface));
+  color: hsl(var(--ink));
+  font: inherit;
+}
+.gym .achievement-share {
+  width: min(500px, calc(100% - 22px));
+  max-height: calc(100dvh - 22px);
+  padding: 16px;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--line));
+  border-radius: 20px;
+  background: hsl(var(--surface));
+  color: hsl(var(--ink));
+  box-shadow: var(--panel-shadow);
+}
+.gym .achievement-share::backdrop { background: hsl(var(--shadow) / .62) }
+.gym .achievement-share [hidden] { display: none }
+.gym .achievement-share-header { display: flex; align-items: center; justify-content: space-between; gap: 8px }
+.gym .achievement-share-header h2 { margin: 0; font: 800 25px/1.1 var(--display) }
+.gym .achievement-preview {
+  display: block;
+  width: min(100%, 290px);
+  aspect-ratio: 1;
+  margin: 8px auto 12px;
+  border: 1px solid hsl(var(--line));
+  border-radius: 12px;
+}
+.gym .achievement-share textarea { margin: 5px 0 0; font-size: 14px; resize: vertical }
+.gym .achievement-share .note { min-height: 1.5em }
+.gym .achievement-share-actions { display: flex; flex-wrap: wrap; gap: 9px }
+.gym .achievement-share-actions .btn { flex: 1 0 auto; width: auto; min-height: 44px; font-size: 15px }
 /* Termo (Wordle-style) */
 .gym .tmgrid{display:flex;flex-direction:column;gap:6px;align-items:center;margin:10px 0 8px}
 .gym .tmrow{display:flex;gap:6px}

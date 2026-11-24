@@ -4,6 +4,7 @@ import { getAuthUserId } from "@convex-dev/auth/server"
 import { logEvent } from "./analytics"
 import { MAX_XP_FIRST_SAVE, MAX_XP_GAIN_PER_DAY, utcDay } from "./perks"
 import { isWorkoutId } from "../shared/workout"
+import { BOSS_TOPIC_KEY } from "../shared/boss-topics"
 
 const ID_RE = /^[a-z0-9_-]{1,40}$/
 const DAY_RE = /^\d{4}-\d{1,2}-\d{1,2}$/
@@ -22,7 +23,7 @@ function cleanBoard(b: Record<string, number> | undefined): Record<string, numbe
   const out: Record<string, number> = {}
   for (const [k, n] of Object.entries(b ?? {}).slice(0, 300)) {
     if (!(n > 0)) continue
-    if (BOARD_RE.test(k)) out[k] = 1
+    if (BOARD_RE.test(k) || BOSS_TOPIC_KEY.test(k)) out[k] = 1
     else if (isWorkoutId(k) && Number.isInteger(n) && n >= 20000101 && n <= 99991231) out[k] = n
     else if (recentGame(k)) out[k] = n >= 2 ? 2 : 1
   }

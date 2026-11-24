@@ -6,7 +6,6 @@ import { pronOf } from './pron'
 import { WHY } from './why'
 import { EXPLAIN } from './explain'
 import { BOSSES } from './bosses'
-import { memesFor } from './memes'
 import { BANK, seeded } from './bank'
 import { XWORDS } from './xwords'
 import { XWORDS2 } from './xwords2'
@@ -14,12 +13,31 @@ const XALL=[...XWORDS,...XWORDS2];
 import { makeCrossword } from './xgen'
 import { TERMO_ANSWERS, TERMO_EXTRA } from './termo-words'
 import { EMOJI_IDIOMS } from './emoji-idioms'
-import { brasiliaDay, WORKOUT_EVENTS, WORKOUT_IDS, workoutForDay } from '../../shared/workout'
+import { brasiliaDay, isWorkoutId, WORKOUT_EVENTS, WORKOUT_IDS, workoutForDay } from '../../shared/workout'
 import { WORKOUTS } from './workout'
+import { addGuestCompletion, GUEST_PRACTICE_KEY, GUEST_PRACTICE_LIMIT, guestActivitiesFromProgress, guestRemaining, readGuestCompletions } from './guest-practice'
+import type { LoginTarget, PracticeTarget } from './guest-practice'
+import { bossAchievement, completedTopics, lessonShareTopic, practiceTechnique, quizTechniqueId, unitShareTopic } from './achievement'
+import type { Achievement } from './achievement'
+import { mountAchievementShare } from './achievement-share'
+import { rememberBossTopics, savedBossTopicIds } from '../../shared/boss-topics'
+import { highestUnlockedWorld, worldUnlocked } from './world-progression'
 import { ADV_SHORT } from './data-advanced'
 import { USA_SHORT } from './data-usa'
 // Attach each question's explanation to it, so it travels with the question into board quizzes too.
-for (const l of LESSONS) (l.q as any[]).forEach((q: any, i: number) => { q.why = (WHY[l.id] || [])[i] || '' })
+const bossTopicLabels = new Map<string, string>();
+for (const l of LESSONS) (l.q as any[]).forEach((q: any, i: number) => {
+  q.why = (WHY[l.id] || [])[i] || '';
+  const correct = q[0].includes('___') ? q[0].replace('___', q[1][0]) : q[1][0];
+  const techniqueId = quizTechniqueId(l.id, correct);
+  q.practiceTopicId = techniqueId ? 'technique-' + techniqueId : 'lesson-' + l.id;
+  bossTopicLabels.set(q.practiceTopicId, lessonShareTopic(l));
+})
+for (const bank of BANK) for (const q of bank) {
+  if (!q.why) continue;
+  q.practiceTopicId = 'bank-' + Math.floor(seeded(q[0] + '\n' + q.why)() * 2 ** 32).toString(36);
+  bossTopicLabels.set(q.practiceTopicId, q.why);
+}
 import { AI_TIERS, aiLimitFor } from '@convex/perks'
 
 export type GymProgress = {
@@ -33,9 +51,11 @@ export type GymProgress = {
 export type AiResult = { ok: true; text: string } | { ok: false; code: string }
 export type GymDeps = {
   initial: () => Partial<GymProgress> | null
+  initialGuestProgress?: () => Partial<GymProgress> | null
   save: (p: GymProgress) => void
   isAuthed: () => boolean
-  login: (next?: 'review') => void
+  practiceAccess?: () => 'member' | 'guest' | 'restoring'
+  login: (next?: LoginTarget, limited?: boolean) => void
   account: () => void
   accountLabel: () => string
   chat: (scenario: string, history: { role: 'user' | 'assistant'; content: string }[], level: number) => Promise<AiResult>
@@ -52,7 +72,7 @@ export type GymDeps = {
   track: (name: string, props?: string) => void
 }
 export type AiQuota = { used: number; limit: number; rank: string; admin?: boolean; next: { xp: number; limit: number; rank: string } | null }
-export type GymHandle = { destroy: () => void; setState: (p: Partial<GymProgress>) => void; refresh: () => void; reset: () => void; openReviewChat: () => void }
+export type GymHandle = { destroy: () => void; setState: (p: Partial<GymProgress>) => void; refresh: () => void; reset: () => void; resumePractice: (target: LoginTarget) => void }
 
 // Bolha: the mascot, a speech bubble wearing a headset.
 export const MASCOT = '<svg class="mascot" viewBox="0 0 120 120" aria-hidden="true"><path d="M14 46a46 40 0 0 1 92 0" fill="none" stroke="#2B1B5A" stroke-width="6" stroke-linecap="round"/><path d="M24 30h72a16 16 0 0 1 16 16v34a16 16 0 0 1-16 16H58l-20 16V96H24A16 16 0 0 1 8 80V46a16 16 0 0 1 16-16z" fill="#FFC93C" stroke="#2B1B5A" stroke-width="5" stroke-linejoin="round"/><rect x="4" y="46" width="14" height="26" rx="7" fill="#7B4DFF" stroke="#2B1B5A" stroke-width="4"/><rect x="102" y="46" width="14" height="26" rx="7" fill="#7B4DFF" stroke="#2B1B5A" stroke-width="4"/><circle cx="45" cy="58" r="7" fill="#2B1B5A"/><circle cx="75" cy="58" r="7" fill="#2B1B5A"/><circle cx="47.5" cy="55.5" r="2.4" fill="#fff"/><circle cx="77.5" cy="55.5" r="2.4" fill="#fff"/><circle cx="34" cy="71" r="5" fill="#FF8FA3" opacity=".8"/><circle cx="86" cy="71" r="5" fill="#FF8FA3" opacity=".8"/><path d="M50 72q10 10 20 0" fill="none" stroke="#2B1B5A" stroke-width="5" stroke-linecap="round"/></svg>';
@@ -109,6 +129,8 @@ const MARKUP = `<div class="app">
 
 export function mountGym(root: HTMLElement, deps: GymDeps): GymHandle {
 root.innerHTML = MARKUP
+const achievementShare = mountAchievementShare(root);
+let sessionAchievement: Achievement | null = null;
 // "How it sounds" line under an English sentence (US English, spelled for Brazilians).
 const pronHtml=t=>{const p=pronOf(t);return p?'<span class="pron" title="Como soa no inglês americano. MAIÚSCULA = sílaba forte; dh/th = th com a língua entre os dentes; â = som neutro.">🗣 '+esc(p)+'</span>':''};
 const SPK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9zM17 9a4 4 0 0 1 0 6"/></svg>';
@@ -122,6 +144,54 @@ const norm=s=>s.toLowerCase().replace(/[^a-z0-9' ]/g,'').split(/\s+/).filter(Boo
 const DEF=()=>({xp:0,streak:0,last:'',units:{},lessons:{},goal:50,dayXp:0,dayKey:'',freezes:0,days:[],badges:[],lvl:0,chats:0,reviews:0,goals:0,board:{},diceDay:'',diceVal:0});
 let S=Object.assign(DEF(),deps.initial()||{});
 const save=()=>{try{deps.save(S)}catch(e){}};
+let guestCompletions: PracticeTarget[] | null = null;
+
+function readGuestPractice() {
+  let stored = null;
+  try { stored = localStorage.getItem(GUEST_PRACTICE_KEY) } catch {}
+  if (guestCompletions === null) {
+    if (stored !== null) guestCompletions = readGuestCompletions(stored);
+    else {
+      const quizKeys = LEVELS.flatMap((_, w) => worldTiles(w)
+        .filter(t => ['quiz', 'sprint', 'rev', 'chefe'].includes(t.k))
+        .map(t => t.key));
+      const progress = deps.initialGuestProgress ? deps.initialGuestProgress() : S;
+      writeGuestPractice(guestActivitiesFromProgress(progress ?? {}, quizKeys, WORKOUT_IDS));
+    }
+  } else if (stored !== null) {
+    guestCompletions = readGuestCompletions(stored).reduce(addGuestCompletion, guestCompletions);
+  }
+  return guestCompletions;
+}
+
+function writeGuestPractice(completions: PracticeTarget[]) {
+  guestCompletions = completions;
+  try { localStorage.setItem(GUEST_PRACTICE_KEY, JSON.stringify(completions)) } catch {}
+}
+
+function allowPractice(target: LoginTarget) {
+  const access = practiceAccess();
+  if (access === 'member') return true;
+  if (access === 'restoring') {
+    toast('Estamos verificando sua sessão. Tente de novo em instantes.');
+    return false;
+  }
+  if (guestRemaining(readGuestPractice()) > 0) return true;
+  if (!$('#sess').classList.contains('hidden')) closeSession();
+  deps.login(target, true);
+  return false;
+}
+
+function completeGuestPractice(target: PracticeTarget) {
+  if (practiceAccess() !== 'guest') return;
+  const previous = readGuestPractice();
+  const next = addGuestCompletion(previous, target);
+  if (next !== previous) writeGuestPractice(next);
+}
+
+function practiceAccess() {
+  return deps.practiceAccess?.() ?? (deps.isAuthed() ? 'member' : 'guest');
+}
 const dayStr=d=>d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
 const today=()=>dayStr(new Date());
 const parseDay=t=>{const [y,m,d]=String(t).split('-').map(Number);return new Date(y,(m||1)-1,d||1)};
@@ -146,8 +216,8 @@ const addDayXp=n=>{if(S.dayKey!==today()){S.dayKey=today();S.dayXp=0}S.dayXp+=n}
 const levelDone=lv=>LESSONS.filter(l=>l.lv===lv).every(l=>S.lessons[l.id]);
 // Progression levels exclude "free" worlds (always open, e.g. the US intensive).
 const PROG=LEVELS.filter(l=>!l.free).length;
-const openLv=()=>{let o=0;while(o<PROG-1&&(o<(S.lvl||0)||levelDone(o)))o++;return o};
-const lvOpen=lv=>!!(LEVELS[lv]&&LEVELS[lv].free)||lv<=openLv();
+const openLv=()=>highestUnlockedWorld(S.board, PROG);
+const lvOpen=lv=>Boolean(LEVELS[lv] && (LEVELS[lv].free || worldUnlocked(S.board, lv)));
 const count3=()=>Object.values(S.units).filter(n=>n>=3).length+Object.values(S.lessons).filter(n=>n>=3).length;
 const BADGES=[
  {id:'first_lesson',e:'🎓',t:'Primeira aula',d:'Termine uma aula',ok:()=>Object.keys(S.lessons).length>0},
@@ -224,39 +294,9 @@ function updateHeader(){
   $('#rankname').textContent=rankOf(S.xp).name;
 }
 // Compact "today" strip: daily goal, streak bonus and shields.
-// Guests can use everything except the AI; nudge them to save progress without blocking anything.
-function saveNudge(compact){
-  if(deps.isAuthed()||!S.xp)return '';
-  return '<div class="savebox'+(compact?' mini':'')+'"><span>💾 Seus <b>'+S.xp+' xp</b> estão só neste aparelho. Crie sua conta grátis para não perder nada'+(compact?'':' e liberar a conversa com IA')+'.</span><button class="btn'+(compact?' mini':'')+'" data-login="1">Salvar meu progresso</button></div>';
-}
 // One dice roll per device per day, whoever is signed in (signing out must not give a free re-roll).
 const DICE_DEV_KEY='devenglish-dice';
 function deviceDice(){try{const d=JSON.parse(localStorage.getItem(DICE_DEV_KEY)||'{}');return{day:d.day||'',val:+d.val||0}}catch(e){return{day:'',val:0}}}
-// Meme card: the mascot or a boss comments on the moment (came back, streak at risk, guest, goal hit).
-// One per situation per day; the learner can dismiss it.
-const MEME_KEY='devenglish-meme';
-function daysSinceDay(d){if(!d)return 0;const [y,m,dd]=d.split('-').map(Number);const a=new Date(y,m-1,dd),n=new Date();n.setHours(0,0,0,0);return Math.round((n-a)/864e5)}
-function memeSituation(){
-  const since=S.last?daysSinceDay(S.last):0,st=liveStreak();
-  if(S.xp>0&&since>=2)return{sit:'back',days:since};
-  if(new Date().getHours()>=18&&st>0&&S.last!==today())return{sit:'risk',days:since};
-  if(!deps.isAuthed()&&S.xp>0)return{sit:'guest',days:since};
-  if(S.xp>0&&dayXpNow()>=S.goal)return{sit:'goal',days:since};
-  return{sit:'hello',days:since};
-}
-function memeCard(){
-  const m=memeSituation(),day=today();
-  try{if(localStorage.getItem(MEME_KEY)===day+'|'+m.sit)return null}catch(e){}
-  const list=memesFor(m.sit);let h=0;for(const ch of day+m.sit)h=(h*31+ch.charCodeAt(0))>>>0;
-  const mm=list[h%list.length];
-  const end=new Date(new Date().getFullYear(),11,31),left=Math.max(0,Math.ceil((end-new Date())/864e5));
-  const text=mm.text.replace('{streak}',String(liveStreak())).replace('{xp}',String(S.xp)).replace('{days}',String(m.days)).replace('{left}',String(left));
-  const who=mm.who==='b'?{av:MASCOT,name:'Bolha'}:{av:BOSSES[mm.who].av,name:BOSSES[mm.who].name};
-  return{sit:m.sit,html:'<div class="memecard m-'+m.sit+'"><span class="mav">'+who.av+'</span><div class="mbub"><b>'+esc(who.name)+'</b><span>'+esc(text)+'</span>'+
-    '<span class="mbtns">'+(m.sit==='risk'||m.sit==='back'?'<button class="btn mini" data-memego="1">Bora, 5 minutos</button>':'')+(!deps.isAuthed()&&S.xp>0?'<button class="btn mini'+(m.sit==='guest'?'':' alt')+'" data-login="1">Salvar meu progresso</button>':'')+((m.sit==='hello'||m.sit==='goal')&&deps.push&&deps.push().status==='off'?'<button class="btn mini alt" data-push-on="1">🔔 Me lembra todo dia</button>':'')+'</span>'+
-    '</div><button class="memex" data-memex="'+m.sit+'" aria-label="Dispensar">✕</button></div>'};
-}
-function boardBanner(){const m=memeCard();return m?m.html:saveNudge(true)} // one banner at a time
 function todayHtml(){
   const d=dayXpNow(),g=Math.min(1,d/S.goal),st=liveStreak(),mu=mult(st);
   return '<section class="daily"><div class="dg"><div class="gl"><span>'+(d>=S.goal?'🎯 Meta de hoje batida!':'Meta de hoje')+'</span><b>'+Math.min(d,S.goal)+'/'+S.goal+' xp</b></div><div class="prog"><i style="width:'+(g*100)+'%"></i></div></div>'+
@@ -431,15 +471,15 @@ function lockedHtml(lv){
 }
 function renderHome(){
   updateHeader();
-  const open=UNITS.map((u,i)=>i).filter(i=>lvOpen(UNITS[i].lv));
+  const open=UNITS.map((u,i)=>i).filter(i=>canStartPractice(UNITS[i],'treino'));
   let nx=open.find(i=>!S.units[UNITS[i].id]);const all=nx===undefined;if(all)nx=open.find(i=>S.units[UNITS[i].id]<3);if(nx===undefined)nx=open[0];
   const u=UNITS[nx];
   $('#v-home').innerHTML=todayHtml()+reviewHtml()+
-   '<section class="today">'+MASCOT+'<small>'+(all?'Revisão, 5 minutos':'Treino de hoje, 5 minutos')+'</small><h1>'+esc(u.t)+'</h1><p>'+esc(u.s)+'. 10 exercícios, quase tudo no toque.</p><button class="go" data-start="'+nx+'">Começar</button></section>'+
+   (u?'<section class="today">'+MASCOT+'<small>'+(all?'Revisão, 5 minutos':'Treino de hoje, 5 minutos')+'</small><h1>'+esc(u.t)+'</h1><p>'+esc(u.s)+'. 10 exercícios, quase tudo no toque.</p><button class="go" data-start="'+nx+'">Começar</button></section>':'')+
    LEVELS.map((L,lv)=>{
      const list=UNITS.map((x,i)=>[x,i]).filter(([x])=>x.lv===lv),done=list.filter(([x])=>S.units[x.id]).length,isOpen=lvOpen(lv);
      return levelHead(lv,done,list.length,'treinos')+(isOpen?'':lockedHtml(lv))+'<div class="units'+(isOpen?'':' locked')+'">'+list.map(([x,i])=>
-       '<button class="unit" '+(isOpen?'data-start="'+i+'"':'disabled')+'><span class="n">'+(i+1)+'</span><span><span class="t">'+esc(x.t)+'</span><span class="s">'+esc(x.s)+'</span></span>'+starsHtml(S.units[x.id]||0)+'</button>').join('')+'</div>';
+       '<button class="unit" '+(canStartPractice(x,'treino')?'data-start="'+i+'"':'disabled')+'><span class="n">'+(i+1)+'</span><span><span class="t">'+esc(x.t)+'</span><span class="s">'+esc(x.s)+'</span></span>'+starsHtml(S.units[x.id]||0)+'</button>').join('')+'</div>';
    }).join('');
 }
 function renderBook(){
@@ -450,6 +490,8 @@ function renderBook(){
 
 /* ---------- training session ---------- */
 function startSession(ui){
+  if (!canStartPractice(UNITS[ui], 'treino')) return;
+  if (!allowPractice('unit:' + UNITS[ui].id)) return;
   const order=shuffle([0,1,2,3,4,5,6,7]),types=['listen','gap','build','reverse'];
   const q=order.map((pi,i)=>({pi,type:types[i%4]}));
   q.push({pi:order[0],type:'build'},{pi:order[1],type:'listen'});
@@ -507,11 +549,19 @@ function grade(ok){
 function finish(){
   const acc=sess.right/sess.total,st=acc>=.9?3:acc>=.7?2:1,u=UNITS[sess.ui];
   S.units[u.id]=Math.max(S.units[u.id]||0,st);try{deps.track('unit_done',u.id)}catch(e){}
+  completeGuestPractice('unit:' + u.id);
   const r=award(sess.right*10),gain=r.total;
+  sessionAchievement = {
+    title: 'Treino concluído!',
+    description: 'Pratiquei ' + u.t + ' no Dev English Gym.',
+    topics: [unitShareTopic(u)],
+    technique: practiceTechnique(['unit-' + u.id]),
+    result: '+' + gain + ' XP',
+  };
   $('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">'+esc(u.t)+' feito!</p><div class="kv"><div><b>'+sess.right+'/'+sess.total+'</b>de primeira</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">Agora use essas frases numa conversa de verdade com a IA.</p></div>';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">'+esc(u.t)+' feito!</p><div class="kv"><div><b>'+sess.right+'/'+sess.total+'</b>de primeira</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">Agora use essas frases numa conversa de verdade com a IA.</p></div>';
   const fb=$('#fb');fb.className='fb';
-  fb.innerHTML='<button class="btn" id="tochat">Praticar conversa</button><button class="btn alt" id="back">Voltar pra trilha</button>';
+  fb.innerHTML='<button class="btn" id="tochat">Praticar conversa</button><button class="btn alt" id="back">Voltar pra trilha</button>'+sessionShareButton();
   sess.over=true;
 }
 
@@ -555,7 +605,7 @@ function gradeRev(ok){
 function finishRev(){
   S.reviews+=rev.list.length;const r=award(rev.right*5+(rev.list.length-rev.right)*2),gain=r.total;rev.over=true;
   $('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<p class="big">Revisão feita!</p><div class="kv"><div><b>'+rev.right+'/'+rev.list.length+'</b>certas</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">As que você acertou voltam daqui a alguns dias. As que errou voltam amanhã.</p></div>';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+pushAsk()+'<p class="big">Revisão feita!</p><div class="kv"><div><b>'+rev.right+'/'+rev.list.length+'</b>certas</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'<p class="note">As que você acertou voltam daqui a alguns dias. As que errou voltam amanhã.</p></div>';
   const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar</button>';
 }
 function revClick(b){
@@ -578,6 +628,8 @@ function revClick(b){
 let sessHist=false;
 function openSess(){$('#sess').classList.remove('hidden');if(!sessHist){try{history.pushState({sess:1},'',location.pathname+location.search+'#atividade');sessHist=true}catch(e){}}}
 function closeSession(fromHistory){
+  achievementShare.close();
+  sessionAchievement = null;
   const restoreWorkoutFocus = workout !== null;
   workout = null;
   if (restoreWorkoutFocus) {
@@ -615,21 +667,24 @@ $('#sess').addEventListener('click',e=>{
 const sayable=t=>t.split(' = ')[0].replace('→',',');
 function renderLearn(){
   updateHeader();
-  const ol=openLv();
   $('#v-learn').innerHTML=todayHtml()+reviewHtml()+
    LEVELS.map((V,lv)=>{
      const ls=LESSONS.map((x,i)=>[x,i]).filter(([x])=>x.lv===lv),us=UNITS.map((x,i)=>[x,i]).filter(([x])=>x.lv===lv),isOpen=lvOpen(lv);
      const tiles=worldTiles(lv),dn=tiles.filter(t=>tileDone(t)).length;
-     const row=(x,attr,n,stars)=>'<button class="unit" '+(isOpen?attr:'disabled')+'><span class="n">'+n+'</span><span><span class="t">'+esc(x.t)+'</span><span class="s">'+esc(x.s)+'</span></span>'+starsHtml(stars)+'</button>';
-     return '<div class="lvhead'+(isOpen?'':' locked')+'"><span class="lvtag">'+V.tag+'</span><span class="lvt"><b>'+esc(WORLD[lv])+'</b><span class="s">'+esc(LVNAME(lv))+' · '+dn+'/16 casas</span></span>'+(isOpen?'<button class="btn alt mini" data-world="'+lv+'">Tabuleiro</button>':'<span class="lock" aria-label="Bloqueado">🔒</span>')+'</div>'+
+     const row=(x,attr,kind,n,stars)=>'<button class="unit" '+(canStartPractice(x,kind)?attr:'disabled')+'><span class="n">'+n+'</span><span><span class="t">'+esc(x.t)+'</span><span class="s">'+esc(x.s)+'</span></span>'+starsHtml(stars)+'</button>';
+     return '<div class="lvhead'+(isOpen?'':' locked')+'"><span class="lvtag">'+V.tag+'</span><span class="lvt"><b>'+esc(WORLD[lv])+'</b><span class="s">'+esc(LVNAME(lv))+' · '+dn+'/'+(tiles.length-1)+' casas</span></span>'+(isOpen?'<button class="btn alt mini" data-world="'+lv+'">Tabuleiro</button>':'<span class="lock" aria-label="Bloqueado">🔒</span>')+'</div>'+
        (isOpen?'':lockedHtml(lv))+
-       '<div class="units'+(isOpen?'':' locked')+'">'+ls.map(([x,i])=>row(x,'data-lesson="'+i+'"','A',S.lessons[x.id]||0)).join('')+us.map(([x,i])=>row(x,'data-start="'+i+'"','T',S.units[x.id]||0)).join('')+'</div>';
+       '<div class="units'+(isOpen?'':' locked')+'">'+ls.map(([x,i])=>row(x,'data-lesson="'+i+'"','aula','A',S.lessons[x.id]||0)).join('')+us.map(([x,i])=>row(x,'data-start="'+i+'"','treino','T',S.units[x.id]||0)).join('')+'</div>';
    }).join('');
 }
 // Skipping a world = beating the previous world's boss.
-function startTest(lv){startBoardQuiz(lv-1,worldTiles(lv-1)[15])}
+function startTest(lv){
+  if (lv>0 && LEVELS[lv]) startBoardQuiz(lv-1,worldTiles(lv-1)[15],true);
+}
 function startLesson(li){
   const L=LESSONS[li];
+  if (!canStartPractice(L, 'aula')) return;
+  if (!allowPractice('lesson:' + L.id)) return;
   const steps=[...L.c.map(c=>({k:'card',c})),...L.q.map(q=>({k:'quiz',q})),...(L.w?[{k:'write'}]:[]),...L.sp.map(t=>({k:'speak',t}))];
   les={li,L,steps,pos:0,right:0,wrote:false,spoke:0,busy:false,say:'',heard:''};
   openSess();renderStep();
@@ -675,7 +730,12 @@ function showHeard(){
 function speakState(){const r=$('#rec');if(r)r.textContent=listening?'Parar':(les.heard?'Gravar de novo':'Gravar minha fala');if(!listening)showHeard()}
 function gradeQuiz(i){
   const st=les.steps[les.pos],[q,o,sayIt]=st.q,ok=i===les.answer,gap=q.includes('___');les.done=true;
-  if(ok)les.right++;
+  if(ok){
+    les.right++;
+    if (les.board?.kind === 'chefe' && st.q.practiceTopicId) {
+      (les.board.topics ??= new Set()).add(st.q.practiceTopicId);
+    }
+  }
   root.querySelectorAll('#sbody .opt').forEach((x,k)=>{if(k===les.answer)x.classList.add('ok');else if(k===i)x.classList.add('no')});
   const g=$('#gapslot');if(g)g.textContent=o[0];
   const full=gap?q.replace('___',o[0]):o[0];
@@ -709,13 +769,26 @@ function finishTest(){
   if(pass)S.lvl=Math.max(S.lvl||0,lv);
   const r=award(les.right*5),gain=r.total;
   dictSink=chatSink;les.over=true;$('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<p class="big">'+(pass?esc(LEVELS[lv].t)+' liberado!':'Quase lá!')+'</p><div class="kv"><div><b>'+les.right+'/'+les.L.q.length+'</b>certas (precisa '+need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+pushAsk()+'<p class="big">'+(pass?esc(LEVELS[lv].t)+' liberado!':'Quase lá!')+'</p><div class="kv"><div><b>'+les.right+'/'+les.L.q.length+'</b>certas (precisa '+need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+
     '<p class="note">'+(pass?'Você pulou direto para o '+esc(LVNAME(lv))+'.':'Faça as aulas do '+esc(LEVELS[lv-1].t)+' ou tente o teste de novo mais tarde.')+'</p></div>';
   const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar</button>';
 }
 function finishBoard(){
   const b=les.board,n=les.L.q.length,pass=les.right>=b.need,first=!S.board[b.key];try{deps.track('board_done',b.kind+(pass?':ok':':fail'))}catch(e){}
+  completeGuestPractice(b.kind === 'daily' ? 'game:daily' : 'board:' + b.key);
   if(pass)S.board[b.key]=1;
+  if(pass&&b.kind==='chefe'&&b.topics){
+    const evidence = [...b.topics];
+    evidence.sort((a,b)=>Number(b.startsWith('technique-'))-Number(a.startsWith('technique-')));
+    const labels = new Set();
+    const distinct = evidence.filter(id=>{
+      const label = bossTopicLabels.get(id);
+      if (!label || labels.has(label)) return false;
+      labels.add(label);
+      return true;
+    });
+    rememberBossTopics(S.board,b.w,distinct);
+  }
   if(pass&&b.kind==='chefe')setTimeout(()=>sfx('fanfare'),700);
   if(pass&&b.kind==='chefe'&&!LEVELS[b.w].free)S.lvl=Math.min(PROG-1,Math.max(S.lvl||0,b.w+1));
   const bonus=pass&&first?{quiz:10,sprint:15,rev:15,chefe:50,daily:40}[b.kind]||0:0;
@@ -725,21 +798,38 @@ function finishBoard(){
   const title=pass?(b.kind==='chefe'?'Chefão derrotado!':b.kind==='daily'?'Desafio do dia concluído!':b.kind==='emoji'?'Emoji idioms: mandou bem!':'Casa concluída!'):'Quase lá!';
   const note=b.kind==='emoji'?(pass?(first?'Bônus de hoje garantido. Jogue mais rodadas para aprender novas expressões!':'Rodada extra feita. São quase 100 expressões!'):'Precisava de '+b.need+' acertos. Jogue outra rodada!'):b.kind==='daily'?(pass?(first?'Bônus de hoje garantido. Amanhã tem perguntas novas!':'Treino extra feito. Amanhã tem perguntas novas!'):'Precisava de '+b.need+' acertos. Tente de novo!'):pass?(b.kind==='chefe'?(nextW?nextW+' liberada! Seu peão já pode entrar no próximo mundo.':'Você zerou o jogo. Respeito!'):'Seu peão avança no tabuleiro.'):'Precisava de '+b.need+' acertos. Revise e tente de novo.';
   const B=b.kind==='chefe'?BOSSES[b.w]:null;
-  $('#sbody').innerHTML='<div class="end">'+(B?'<div class="bossend'+(pass?' down':'')+'">'+B.av+'</div><p class="bossline">'+esc(B.name)+': “'+esc(pass?B.win:B.lose)+'”</p>':MASCOT)+saveNudge()+pushAsk()+'<p class="big">'+title+'</p><div class="kv"><div><b>'+les.right+'/'+n+'</b>certas (precisa '+b.need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+'<p class="note">'+esc(note)+'</p></div>';
-  const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar ao tabuleiro</button>';
+  sessionAchievement = pass && b.kind === 'chefe'
+    ? worldBossAchievement(b.w, b.topics, { right: les.right, total: n, xp: gain })
+    : null;
+  const topics = sessionAchievement?.topics ?? [];
+  const structure = sessionAchievement?.technique;
+  const learned = topics.length || structure ? '<div class="boss-learned">'+
+    (topics.length ? '<b>O que você praticou neste mundo</b><ul>'+topics.map(topic=>'<li>'+esc(topic)+'</li>').join('')+'</ul>' : '')+
+    (structure ? '<p><b>Estrutura em inglês</b><br>'+esc(structure.pattern)+'<br><i lang="en">'+esc(structure.example)+'</i></p>' : '')+
+    '</div>' : '';
+  $('#sbody').innerHTML='<div class="end">'+(B?'<div class="bossend'+(pass?' down':'')+'">'+B.av+'</div><p class="bossline">'+esc(B.name)+': “'+esc(pass?B.win:B.lose)+'”</p>':MASCOT)+pushAsk()+'<p class="big">'+title+'</p><div class="kv"><div><b>'+les.right+'/'+n+'</b>certas (precisa '+b.need+')</div><div><b>+'+gain+'</b>xp</div></div>'+learned+rewardsHtml(r,!pass)+'<p class="note">'+esc(note)+'</p></div>';
+  const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar ao tabuleiro</button>'+sessionShareButton();
 }
 function finishLesson(){
   if(les.board){finishBoard();return}
   if(les.test){finishTest();return}
   const L=les.L,st=les.right>=L.q.length?3:les.right>=L.q.length*.6?2:1;
   S.lessons[L.id]=Math.max(S.lessons[L.id]||0,st);try{deps.track('lesson_done',L.id)}catch(e){}
+  completeGuestPractice('lesson:' + L.id);
   const r=award(les.right*10+(les.wrote?20:0)+les.spoke*5),gain=r.total;
+  sessionAchievement = {
+    title: 'Aula concluída!',
+    description: 'Concluí a aula “' + L.t + '” na minha trilha de inglês para devs.',
+    topics: [lessonShareTopic(L)],
+    technique: practiceTechnique([L.id]),
+    result: les.right + '/' + L.q.length + ' acertos · +' + gain + ' XP',
+  };
   dictSink=chatSink;les.over=true;
   $('#bar').style.width='100%';
-  $('#sbody').innerHTML='<div class="end">'+MASCOT+saveNudge()+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">Aula feita: '+esc(L.t)+'!</p><div class="kv"><div><b>'+les.right+'/'+L.q.length+'</b>exercícios certos</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'</div>';
+  $('#sbody').innerHTML='<div class="end">'+MASCOT+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>★</i>':'★').join('')+'</div><p class="big">Aula feita: '+esc(L.t)+'!</p><div class="kv"><div><b>'+les.right+'/'+L.q.length+'</b>exercícios certos</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'</div>';
   const fb=$('#fb');fb.className='fb';
   const nl=les.li+1;
-  fb.innerHTML='<button class="btn" id="back">Voltar ao tabuleiro</button><button class="btn alt" id="tochat">Praticar conversa</button>';
+  fb.innerHTML='<button class="btn" id="back">Voltar ao tabuleiro</button><button class="btn alt" id="tochat">Praticar conversa</button>'+sessionShareButton();
 }
 function lessonClick(b){
   if(b.id==='quit'||b.id==='back'){closeSession();return}
@@ -843,8 +933,7 @@ $('#v-chat').addEventListener('click',e=>{
     if(b.dataset.m==='pt')m.showPt=true;if(b.dataset.m==='hint')m.showHint=true;renderChat()}
 });
 $('#send').addEventListener('click',sendMsg);
-root.addEventListener('click',e=>{const x=e.target.closest('[data-memex]');if(x){try{localStorage.setItem(MEME_KEY,today()+'|'+x.dataset.memex)}catch(err){}renderBoard();return}
-  const po=e.target.closest('[data-push-on]');if(po){togglePush(true);return}
+root.addEventListener('click',e=>{
   const pa=e.target.closest('[data-pushask]');if(pa){const box=pa.closest('.pushask');
     if(pa.dataset.pushask==='yes'){if(box)box.remove();togglePush(true)}
     else{const a=askState();try{localStorage.setItem(ASK_KEY,JSON.stringify({n:(a.n||0)+1,until:Date.now()+3*864e5}))}catch(err){}if(box)box.remove()}
@@ -852,8 +941,8 @@ root.addEventListener('click',e=>{const x=e.target.closest('[data-memex]');if(x)
   const dly=e.target.closest('[data-daily]');if(dly){startDaily();return}
   const xwb=e.target.closest('[data-xword]');if(xwb){startXword();return}
   const tmb=e.target.closest('[data-termo]');if(tmb){startTermo();return}
-  const emb=e.target.closest('[data-emoji]');if(emb){startEmoji();return}
-  const g=e.target.closest('[data-memego]');if(g){const t=worldTiles(boardW??openLv())[Math.max(0,curIndex(worldTiles(boardW??openLv())))];if(t)playTile(t);return}});
+  if(e.target.closest('[data-emoji]'))startEmoji();
+});
 root.addEventListener('click',e=>{const b=e.target.closest('[data-login]');if(b&&!b.closest('#log')){e.preventDefault();deps.login()}});
 $('#scen').addEventListener('change',e=>{if(e.target.id!=='chatlv')return;try{localStorage.setItem(CHATLV_KEY,e.target.value)}catch(err){}
   if(chat.scen&&!chat.busy){toast('Nível <b>'+esc(LEVELS[+e.target.value].tag)+'</b>: conversa recomeçada.');startScen(chat.scen)}});
@@ -884,7 +973,7 @@ const onPop=()=>{
   const t=tabFromPath();if(t)showTab(t,true)};
 window.addEventListener('popstate',onPop);
 $('#v-home').addEventListener('click',e=>{if(e.target.closest('[data-review]')){startReview();return}const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}const b=e.target.closest('[data-start]');if(b)startSession(+b.dataset.start)});
-$('#v-learn').addEventListener('click',e=>{if(e.target.closest('[data-review]')){startReview();return}const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}const w=e.target.closest('[data-world]');if(w){boardW=+w.dataset.world;boardSel=null;showTab('board');return}const b=e.target.closest('[data-lesson]');if(b){startLesson(+b.dataset.lesson);return}const u=e.target.closest('[data-start]');if(u)startSession(+u.dataset.start)});
+$('#v-learn').addEventListener('click',e=>{if(e.target.closest('[data-review]')){startReview();return}const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}const w=e.target.closest('[data-world]');if(w){boardW=+w.dataset.world;boardSel=null;mapOpen=true;showTab('board');return}const b=e.target.closest('[data-lesson]');if(b){startLesson(+b.dataset.lesson);return}const u=e.target.closest('[data-start]');if(u)startSession(+u.dataset.start)});
 $('#v-book').addEventListener('click',e=>{const b=e.target.closest('[data-say]');if(b){const [u,p]=b.dataset.say.split('.');speak(UNITS[+u].p[+p][0])}});
 
 /* ---------- board game: each level is a world with 16 squares around a ring ---------- */
@@ -1016,7 +1105,7 @@ const skyline=plane+tree(30,140,.55)+tree(207,136,.58)+building(92,128,.78,6)+an
 const ART=[village,city,tower,district,summit,skyline].map(scene=>'<svg viewBox="0 12 240 175" aria-hidden="true" focusable="false">'+artDefs+island+scene+'</svg>');
 
 
-let boardW=null,boardSel=null;
+let boardW=null,boardSel=null,mapOpen=false;
 function worldTiles(w){
   const L=LESSONS.map((l,i)=>[l,i]).filter(([l])=>l.lv===w),U=UNITS.map((u,i)=>[u,i]).filter(([u])=>u.lv===w);
   const A=k=>L[k]?{k:'aula',li:L[k][1],id:L[k][0].id,label:SHORT[L[k][0].id]||L[k][0].t}:{k:'quiz'};
@@ -1027,13 +1116,22 @@ function worldTiles(w){
   return seq.map((t,i)=>Object.assign({w,i,key:'w'+w+'t'+i,label:t.big?'Tesouro':LBL[t.k]},t));
 }
 function tileDone(t){
-  if(t.k==='start')return true;
+  if(t.k==='start')return false;
   if(t.k==='aula')return !!S.lessons[t.id];
   if(t.k==='treino')return !!S.units[t.id];
   return !!S.board[t.key];
 }
 const FAMILY={start:'v',aula:'v',sprint:'v',chefe:'v',treino:'b',quiz:'b',rev:'b',bau:'g'};
-const curIndex=tiles=>{const i=tiles.findIndex(t=>!tileDone(t));return i<0?tiles.length:i};
+const curIndex=tiles=>{const i=tiles.findIndex(t=>t.k!=='start'&&!tileDone(t));return i<0?tiles.length:i};
+function canPlayTile(tile, tiles=worldTiles(tile.w)) {
+  return lvOpen(tile.w) && tile.k!=='start' && (tileDone(tile) || tile.i===curIndex(tiles));
+}
+function canStartPractice(activity, kind) {
+  if (!activity || !lvOpen(activity.lv)) return false;
+  const tiles = worldTiles(activity.lv);
+  const tile = tiles.find(t=>t.k===kind && t.id===activity.id);
+  return !tile || canPlayTile(tile,tiles);
+}
 // 5x5 ring: top row left to right, right column down, bottom row right to left, left column up.
 function ringPos(i){if(i<=4)return[1,i+1];if(i<=7)return[i-3,5];if(i<=12)return[5,13-i];return[17-i,1]}
 function tileInfo(t){
@@ -1072,6 +1170,7 @@ function startTermo(){
   const t=tmToday();let saved=S.termo||{};
   if(saved.day!==today()){try{saved=JSON.parse(localStorage.getItem(TM_KEY)||'{}')}catch(e){}} // older versions kept it only here
   const guesses=saved.day===today()?(saved.guesses||[]).slice(0,6):[];
+  if (!guesses.includes(t.word) && guesses.length < 6 && !allowPractice('game:termo')) return;
   sess=null;les=null;rev=null;xw=null;emo=null;
   tm={...t,guesses,cur:['','','','',''],over:false,won:false,msg:''};
   tm.won=guesses.includes(t.word);tm.over=tm.won||guesses.length>=6;
@@ -1122,6 +1221,7 @@ $('#sbody').addEventListener('keydown',e=>{
 // Keep the row being typed visible above the phone keyboard.
 $('#sbody').addEventListener('focusin',e=>{if(!tm)return;const el=e.target.closest('.tin');if(el)setTimeout(()=>{try{el.closest('.tmrow').scrollIntoView({block:'center',behavior:'smooth'})}catch(err){}},250)});
 function tmFinish(){
+  completeGuestPractice('game:termo');
   const key='termo:'+today(),first=!S.board[key];
   if(first){S.board[key]=tm.won?1:2;if(tm.won){const r=award(30+(6-tm.guesses.length)*5);tm.gain=r.total}else save()}
   sfx(tm.won?'fanfare':'no');const w=tm.word;setTimeout(()=>{if(tm&&tm.word===w)speak(w)},400);
@@ -1144,6 +1244,7 @@ function tmClick(b){
 // Daily crossword: English answers, Portuguese clues, the same puzzle for everyone each day.
 let xw=null;const XEN_KEY='devenglish-xword-lang';
 function startXword(){
+  if (!S.board['xword:'+today()] && !allowPractice('game:xword')) return;
   const P=makeCrossword(XALL,seeded('xword'+today()),7,11);
   sess=null;les=null;rev=null;
   const en=(()=>{try{return localStorage.getItem(XEN_KEY)==='en'}catch(e){return false}})();
@@ -1178,6 +1279,7 @@ function xwFocus(r,c){const i=root.querySelector('#sbody input[data-x="'+r+','+c
 function xwStep(d){const e=xwEntryAt(xw.r,xw.c,xw.dir);if(!e)return;const cells=xwCells(e),i=cells.findIndex(([r,c])=>r===xw.r&&c===xw.c),n=cells[i+d];if(n)xwFocus(n[0],n[1])}
 function xwSolved(){return xw.P.grid.every((row,r)=>row.every((v,c)=>v===null||xw.fill[r][c]===v))}
 function xwFinish(given){
+  completeGuestPractice('game:xword');
   xw.over=true;const key='xword:'+today(),first=!S.board[key];
   let r={total:0,ev:[]};
   const enBonus=xw.en&&!xw.usedPt;
@@ -1232,6 +1334,7 @@ function emOk(guess,ans){const g=emNorm(guess),a=emNorm(ans);if(!g)return false;
 // Hint 2: first letter of each word. Hint 3: the first half of each word.
 function emPattern(ans,more){return ans.split(' ').map(w=>{const keep=more?Math.ceil(w.length/2):1;let n=0;return w.replace(/[a-z]/gi,ch=>(n++<keep)?ch:'_')}).join('   ')}
 function startEmoji(){
+  if (!allowPractice('game:emoji')) return;
   sess=null;les=null;rev=null;xw=null;tm=null;
   emo={list:shuffle(EMOJI_IDIOMS.slice()).slice(0,EMOJI_N),pos:0,pts:0,hints:0,state:'ask',msg:''};
   openSess();renderEmoji();
@@ -1265,6 +1368,7 @@ function emoAnswer(){
   else{emo.msg='Ainda não. Tente de novo ou peça uma dica.';sfx('no');renderEmoji();const r=$('#emin');if(r){r.classList.add('shake');}}
 }
 function emoFinish(){
+  completeGuestPractice('game:emoji');
   const key='emoji:'+today(),first=!S.board[key],pass=emo.pts>=7;
   if(pass&&first)S.board[key]=1;
   const r=award(emo.pts*3+(pass&&first?25:0));
@@ -1287,29 +1391,30 @@ $('#sbody').addEventListener('keydown',e=>{if(emo&&emo.state==='ask'&&e.target.i
 
 // Daily challenge: 7 questions from the bank (levels already open), the same for everyone each day.
 const DAILY_N=7,DAILY_NEED=5;
-function dailyDone(){return !!S.board['daily:'+today()]}
 function startDaily(){
+  if (!allowPractice('game:daily')) return;
   const ol=openLv(),rnd=seeded('daily'+today());
-  const all=[];for(let lv=0;lv<=ol;lv++)all.push(...(BANK[lv]||[]));
+  const all=[];for(let lv=0;lv<=ol;lv++)if(lvOpen(lv))all.push(...(BANK[lv]||[]));
   const pool=all.map(q=>[rnd(),q]).sort((a,b)=>a[0]-b[0]).slice(0,DAILY_N).map(x=>x[1]);
   les={li:-1,L:{id:'daily',t:'Desafio do dia',q:pool,c:[],w:null,sp:[]},board:{w:ol,key:'daily:'+today(),kind:'daily',need:DAILY_NEED},steps:pool.map(q=>({k:'quiz',q})),pos:0,right:0,wrote:false,spoke:0,busy:false,say:'',heard:''};
   openSess();renderStep();
 }
-// Quick access to the daily games at the top of the board (phones); desktop shows the cards beside the board.
-function gameChips(){
-  const xd=!!S.board['xword:'+today()],dd=dailyDone();
-  const tmd=S.board['termo:'+today()];
-  const emd=S.board['emoji:'+today()];
-  return '<div class="gchips"><button class="gchip" data-emoji="1">😄 Emojis'+(emd?' ✅':'')+'</button><button class="gchip" data-termo="1">🟩 Termo'+(tmd?(tmd===1?' ✅':' ❌'):'')+'</button><button class="gchip" data-xword="1">🧩 Palavras-cruzadas'+(xd?(S.board['xword:'+today()]===2?' 👀':' ✅'):'')+'</button><button class="gchip" data-daily="1">🎯 Desafio do dia'+(dd?' ✅':'')+'</button></div>';
+function quickGames() {
+  return `<section class="quick-games" aria-labelledby="quick-games-title">
+    <h2 id="quick-games-title">Jogos rápidos</h2>
+    <div class="quick-games-list">
+      ${[['termo', '🟩', 'Termo'], ['xword', '🧩', 'Palavras-cruzadas'],
+         ['emoji', '😄', 'Emojis'], ['daily', '🎯', 'Desafio do dia']].map(([id, icon, label]) =>
+        `<button class="quick-game" data-${id}="1"><span aria-hidden="true">${icon}</span>${label}${
+          S.board[id + ':' + today()] ? '<span class="quick-game-done" title="Já jogou hoje"><span aria-hidden="true">✓</span><span class="sr-only">Já jogou hoje</span></span>' : ''
+        }</button>`
+      ).join('')}
+    </div>
+  </section>`;
 }
-function dailyHtml(){
-  const d=dailyDone();
-  const xd=!!S.board['xword:'+today()];
-  const tmd=S.board['termo:'+today()];
-  const emd=S.board['emoji:'+today()];
-  return '<section class="daygames"><div class="dg1"><span class="dgi">😄</span><div><b>Emoji idioms</b><small>Digite a expressão dos emojis · dicas se travar'+(emd?' · ✅ bônus de hoje feito':' · +25 XP')+'</small></div><button class="btn mini'+(emd?' alt':'')+'" data-emoji="1">Jogar</button></div><div class="dg1"><span class="dgi">🟩</span><div><b>Termo em inglês</b><small>Uma palavra de 5 letras por dia · 6 tentativas'+(tmd?(tmd===1?' · ✅ acertou hoje':' · ❌ amanhã tem outra'):' · até +55 XP')+'</small></div><button class="btn mini'+(tmd?' alt':'')+'" data-termo="1">'+(tmd?'Ver resultado':'Jogar')+'</button></div><div class="dg1"><span class="dgi">🧩</span><div><b>Palavras-cruzadas</b><small>Uma nova por dia · dicas em PT ou em inglês (+50% XP)'+(xd?(S.board['xword:'+today()]===2?' · 👀 respostas vistas':' · ✅ feita hoje'):'')+'</small></div><button class="btn mini'+(xd?' alt':'')+'" data-xword="1">'+(xd?'Ver respostas':'Jogar')+'</button></div><div class="dg1"><span class="dgi">🎯</span><div><b>Desafio do dia</b><small>'+DAILY_N+' perguntas novas todo dia · acerte '+DAILY_NEED+(d?' · ✅ feito hoje':' · +40 XP')+'</small></div><button class="btn mini'+(d?' alt':'')+'" data-daily="1">'+(d?'Jogar de novo':'Jogar')+'</button></div></section>';
-}
-function startBoardQuiz(w,t){
+function startBoardQuiz(w,t,placement=false){
+  if (!t || (!placement && !canPlayTile(t))) return;
+  if (!allowPractice((placement ? 'placement:' : 'board:') + t.key)) return;
   const n={quiz:3,sprint:5,rev:6,chefe:10}[t.k],need={quiz:2,sprint:4,rev:4,chefe:8}[t.k];
   // Lesson questions plus the extra bank for this world, so replays keep changing.
   const pool=shuffle(LESSONS.filter(l=>l.lv===w).flatMap(l=>l.q).concat(BANK[w]||[])).slice(0,n);
@@ -1340,19 +1445,28 @@ function scheduleWorkoutRefresh() {
   }, nextDay - now);
 }
 
-function workoutCard(id) {
-  const completed = Boolean(S.board[id]);
-  return `<section class="workout-card" aria-labelledby="workout-card-title">
-    <div>
-      <p class="workout-meta">Code review · 3 min</p>
-      <h2 id="workout-card-title">${esc(WORKOUTS[id].title)}</h2>
-      <p>${completed && id === WORKOUT_IDS[0] ? 'Amanhã tem outro cenário para aplicar o que você praticou.' : 'Escreva uma resposta em inglês e compare com um exemplo comentado.'}</p>
-    </div>
-    <button class="btn ${completed ? 'alt' : ''}" data-workout-start="${id}">${completed ? 'Praticar de novo' : 'Começar treino'} ${ARROW}</button>
+function todayCard(workoutId, next, remaining) {
+  const info = next && tileInfo(next);
+  const action = next ? `data-practice-tile="${next.key}"` : `data-workout-start="${workoutId}"`;
+  const button = remaining === 0 && next?.k !== 'bau' ? 'Entrar para continuar' :
+    (info?.go || (S.board[workoutId] ? 'Praticar de novo' : 'Começar treino'));
+  const meta = info?.xp.split(' · ')[0] || '3 min';
+  const note = remaining === null ? '' : remaining === 0
+    ? 'Você concluiu as atividades grátis de visitante.'
+    : `${remaining} de ${GUEST_PRACTICE_LIMIT} atividades grátis sem login.`;
+  return `<section class="today-practice" aria-labelledby="today-practice-title">
+    <div class="today-label">${MASCOT}<span>Hoje</span></div>
+    <h2 id="today-practice-title">${esc(info?.title ?? WORKOUTS[workoutId].title)}</h2>
+    <p>${esc(info?.sub || info?.desc || (next ? 'Avance para a próxima casa do seu mundo.' : 'Escreva em inglês e compare com um exemplo comentado.'))}</p>
+    <span class="today-duration">${next ? esc(meta) : 'Code review · 3 min'}</span>
+    <button class="btn" ${action}>${esc(button)} ${ARROW}</button>
+    ${note ? '<p class="today-allowance">' + note + '</p>' : ''}
+    ${next ? `<button class="today-extra" data-workout-start="${workoutId}">Praticar code review</button>` : ''}
   </section>`;
 }
 
 function startWorkout(id) {
+  if (!allowPractice('workout:' + id)) return;
   workout = { id, answer: '', stage: 'write', submitted: false, xp: 0 };
   trackWorkout(WORKOUT_EVENTS.started, id);
   $('.app').inert = true;
@@ -1389,9 +1503,11 @@ function renderWorkout() {
     body.innerHTML = `<h2 id="workout-heading" class="workout-heading" tabindex="-1">Code review praticado!</h2>
       <div class="card"><span class="pt">Você praticou</span><span class="en">${esc(skill)}</span></div>
       ${xp ? '<p class="note">+' + xp + ' XP</p>' : ''}
-      ${id === WORKOUT_IDS[0] && workoutForDay(S.board, workoutDay()) === id ? '<p class="note">Volte amanhã para testar a mesma habilidade em outro PR.</p>' : ''}`;
+      ${id === WORKOUT_IDS[0] && workoutForDay(S.board, workoutDay()) === id ? '<p class="note">Volte amanhã para testar a mesma habilidade em outro PR.</p>' : ''}
+      ${pushAsk()}`;
     footer.innerHTML = `<button class="btn" type="button" id="back">Voltar ao tabuleiro</button>
-      <button class="btn alt" type="button" data-workout-action="chat">${deps.isAuthed() ? 'Praticar com a IA' : 'Entrar para praticar com a IA'}</button>`;
+      <button class="btn alt" type="button" data-workout-action="chat">${deps.isAuthed() ? 'Praticar com a IA' : 'Entrar para praticar com a IA'}</button>
+      ${sessionShareButton()}`;
   }
   body.scrollTop = 0;
   $('#workout-heading').focus({preventScroll:true});
@@ -1433,19 +1549,21 @@ function workoutClick(button) {
   }
   if (button.dataset.workoutAction === 'finish' && workout.stage === 'feedback') {
     workout.stage = 'done';
+    completeGuestPractice('workout:' + workout.id);
     if (!S.board[workout.id]) {
       S.board[workout.id] = workoutDay();
       workout.xp = award(20).total;
       trackWorkout(WORKOUT_EVENTS.completed, workout.id);
       sfx('win');
     }
+    sessionAchievement = workoutAchievement(workout.id, workout.xp);
     updateHeader();
     renderWorkout();
   }
   if (button.dataset.workoutAction === 'chat') {
     closeSession();
     if (!deps.isAuthed()) {
-      deps.login('review');
+      deps.login('review-chat');
       return;
     }
     openReviewChat();
@@ -1457,39 +1575,99 @@ function openReviewChat() {
   startScen('review');
 }
 
+function worldTile(key) {
+  const match = /^w(\d{1,2})t(\d{1,2})$/.exec(key);
+  return match && LEVELS[+match[1]] ? worldTiles(+match[1])[+match[2]] : null;
+}
+
+function resumePractice(target: LoginTarget) {
+  if (!deps.isAuthed()) return;
+  if (target === 'review-chat') {
+    openReviewChat();
+    return;
+  }
+  const [kind, id] = target.split(':');
+  showTab('board');
+  if (kind === 'workout' && isWorkoutId(id)) startWorkout(id);
+  if (kind === 'lesson') {
+    const index = LESSONS.findIndex(lesson => lesson.id === id);
+    if (index >= 0 && lvOpen(LESSONS[index].lv)) startLesson(index);
+  }
+  if (kind === 'unit') {
+    const index = UNITS.findIndex(unit => unit.id === id);
+    if (index >= 0 && lvOpen(UNITS[index].lv)) startSession(index);
+  }
+  if (kind === 'board') {
+    const tile = worldTile(id);
+    if (tile && lvOpen(tile.w) && ['quiz','sprint','rev','chefe'].includes(tile.k)) startBoardQuiz(tile.w, tile);
+  }
+  if (kind === 'placement') {
+    const tile = worldTile(id);
+    if (tile?.k === 'chefe' && tile.w < LEVELS.length - 1) startTest(tile.w + 1);
+  }
+  if (kind === 'game') {
+    if (id === 'daily') startDaily();
+    if (id === 'emoji') startEmoji();
+    if (id === 'termo') startTermo();
+    if (id === 'xword') startXword();
+  }
+}
+
 function renderBoard(){
   updateHeader();
   const ol=openLv();if(boardW===null||boardW>LEVELS.length-1)boardW=ol;
   const w=boardW,open=lvOpen(w),tiles=worldTiles(w),cur=open?curIndex(tiles):-1,done=tiles.filter(tileDone).length;
-  if(boardSel===null||boardSel>=tiles.length)boardSel=Math.min(Math.max(cur,0),tiles.length-1);
-  const sel=tiles[boardSel],selDone=tileDone(sel),selLocked=!open||(!selDone&&boardSel>cur);
+  if(boardSel!==null&&boardSel>=tiles.length)boardSel=null;
+  const selected = boardSel ?? Math.min(Math.max(cur,0),tiles.length-1);
+  const sel=tiles[selected],selDone=tileDone(sel),selLocked=!open||(!selDone&&selected>cur);
   const devDice=deviceDice(),diceToday=S.diceDay===today()||devDice.day===today();
   const diceShown=S.diceDay===today()?S.diceVal:devDice.val;
   const cells=tiles.map((t,i)=>{
     const [r,c]=ringPos(i),dn=tileDone(t),isCur=i===cur,lock=!open||(!dn&&i>cur);
-    const cls='tile f-'+FAMILY[t.k]+' k-'+t.k+(dn?' done':'')+(isCur?' cur':'')+(lock?' locked':'')+(i===boardSel?' sel':'');
-    return '<button class="'+cls+'" style="grid-row:'+r+';grid-column:'+c+'" data-tile="'+i+'" aria-pressed="'+(i===boardSel)+'" aria-label="Casa '+(i+1)+': '+esc(t.label)+(dn?', concluída':lock?', bloqueada':isCur?', sua vez':'')+'"><span class="tn">'+(i+1)+'</span>'+(isCur?PAWN:'<span class="tico'+(t.k==='chefe'&&BOSSES[t.w]?' boss':'')+'">'+(t.k==='chefe'&&BOSSES[t.w]?BOSSES[t.w].av:TIC(t))+'</span>')+'<span class="tl">'+esc(t.label)+'</span>'+(dn&&t.k!=='start'||t.k==='start'?'<span class="tok">'+CHECK+'</span>':'')+'</button>';
+    const cls='tile f-'+FAMILY[t.k]+' k-'+t.k+(dn?' done':'')+(isCur?' cur':'')+(lock?' locked':'')+(i===selected?' sel':'');
+    return '<button class="'+cls+'" style="grid-row:'+r+';grid-column:'+c+'" data-tile="'+i+'"'+(lock||t.k==='start'||(dn&&t.k==='bau')?' disabled':'')+' aria-pressed="'+(i===selected)+'" aria-label="Casa '+(i+1)+': '+esc(t.label)+(lock?', bloqueada':dn?', concluída':isCur?', sua vez':'')+'"><span class="tn">'+(i+1)+'</span>'+(isCur?PAWN:'<span class="tico'+(t.k==='chefe'&&BOSSES[t.w]?' boss':'')+'">'+(t.k==='chefe'&&BOSSES[t.w]?BOSSES[t.w].av:TIC(t))+'</span>')+'<span class="tl">'+esc(t.label)+'</span>'+(dn?'<span class="tok">'+CHECK+'</span>':'')+'</button>';
   }).join('');
   const center=open
     ?'<div class="bcenter"><div class="art">'+ART[w]+'</div><button class="dice'+(diceToday?' used':'')+'" data-dice'+(diceToday?' disabled':'')+'>'+(diceToday&&diceShown?DIE(diceShown):DICE)+'<span>'+(diceToday?'Tirou '+diceShown+' hoje':'Rolar dado')+'</span></button><span class="dsub">'+(diceToday?'Volte amanhã':'1 vez por dia')+'</span></div>'
     :'<div class="bcenter"><div class="art dim">'+ART[w]+'</div><p class="lockmsg">🔒 Vença o chefão de '+esc(WORLD[w-1])+' para entrar. Já sabe o conteúdo? Pule direto para o desafio.</p><button class="btn alt mini" data-test="'+w+'">Pular: enfrentar o chefão de '+esc(WORLD[w-1])+'</button></div>';
   const info=tileInfo(sel);
-  const kicker='CASA '+(boardSel+1)+' · '+(selLocked?'BLOQUEADA':boardSel===cur?'SUA VEZ':selDone?'CONCLUÍDA':'');
+  const kicker='Casa '+(selected+1)+(selLocked?' · Bloqueada':selected===cur?' · Sua vez':selDone?' · Concluída':'');
   let btn='';
   if(selLocked)btn='<button class="btn" disabled>Bloqueada</button>';
   else if(sel.k==='start')btn='';
-  else if(sel.k==='bau')btn=selDone?'<button class="btn" disabled>Baú aberto</button>':'<button class="btn" data-play>'+info.go+'</button>';
-  else btn='<button class="btn" data-play>'+(selDone?info.again:info.go)+' '+ARROW+'</button>';
+  else if(sel.k==='bau')btn=selDone?'<button class="btn alt" disabled>Baú aberto</button>':'<button class="btn alt" data-play>'+info.go+'</button>';
+  else btn='<button class="btn alt" data-play>'+(selDone?info.again:info.go)+' '+ARROW+'</button>';
   const card='<section class="turn'+(info.av?' bossturn':'')+'">'+(info.av?'<span class="bossbig">'+info.av+'</span>':'')+'<span class="kick">'+kicker+'</span><h2>'+esc(info.title)+'</h2>'+(info.sub?'<p class="sub">'+esc(info.sub)+'</p>':'')+(info.ex?'<p class="ex">'+esc(info.ex)+'</p>':'')+(info.desc?'<p class="desc">'+esc(info.desc)+'</p>':'')+(info.xp?'<span class="meta">'+info.xp+'</span>':'')+btn+'</section>';
   renderedWorkoutDay = workoutDay();
   const workoutId = workoutForDay(S.board, renderedWorkoutDay);
-  $('#v-board').innerHTML=
-   '<div class="bhead"><div class="btitle"><h1>'+esc(WORLD[w])+'</h1><p>Mundo '+(w+1)+' · '+LEVELS[w].tag+' · '+(open?done+' de 16 casas concluídas':'bloqueado')+'</p></div>'+
-   '<div class="wnav"><button class="wbtn" data-wprev aria-label="Mundo anterior"'+(w===0?' disabled':'')+'>'+CHEVRON+'</button><button class="wbtn" data-wnext aria-label="Próximo mundo"'+(w===LEVELS.length-1?' disabled':'')+'>'+CHEVRON+'</button></div>'+rankHud()+'</div>'+
-   workoutCard(workoutId)+gameChips()+boardBanner()+'<div class="bwrap"><div class="boardbox"><div class="ring">'+cells+center+'</div></div><aside class="bside">'+card+dailyHtml()+'</aside></div>';
+  const startedTrail = Object.values(S.lessons).some(Boolean) || Object.values(S.units).some(Boolean);
+  const nextTiles = w === ol ? tiles : worldTiles(ol);
+  const next = startedTrail || S.board[workoutId] ? nextTiles[curIndex(nextTiles)] : null;
+  const remaining = practiceAccess() === 'guest' ? guestRemaining(readGuestPractice()) : null;
+  $('#v-board').innerHTML = `<div class="practice-heading"><h1>Seu treino</h1>${rankHud()}</div>
+    <div class="practice-grid">
+      ${todayCard(workoutId, next, remaining)}
+      <section class="world-panel${mapOpen ? ' expanded' : ''}" aria-labelledby="world-name">
+        <div class="world-head">
+          <div><span class="world-label">Seu mundo</span><h2 id="world-name">${esc(WORLD[w])}</h2>
+            <p>${LEVELS[w].tag} · ${open ? done + ' de ' + (tiles.length - 1) + ' casas concluídas' : 'Mundo bloqueado'}</p>
+          </div>
+          <div class="wnav">
+            <button class="wbtn" data-wprev aria-label="Mundo anterior"${w === 0 ? ' disabled' : ''}>${CHEVRON}</button>
+            <button class="wbtn" data-wnext aria-label="Próximo mundo"${w === LEVELS.length - 1 ? ' disabled' : ''}>${CHEVRON}</button>
+          </div>
+        </div>
+        <button class="btn alt world-toggle" aria-expanded="${mapOpen}" aria-controls="world-board" data-map-toggle>${mapOpen ? 'Recolher tabuleiro' : 'Ver tabuleiro'}</button>
+        <div id="world-board" class="world-board">
+          <div class="boardbox"><div class="ring">${cells + center}</div></div>
+          ${boardSel === null ? '' : card}
+        </div>
+      </section>
+    </div>
+    ${quickGames()}`;
   if (boardVisible() && !document.hidden && (tabFromPath() ?? 'board') === 'board') {
     const offer = renderedWorkoutDay + ':' + workoutId;
-    if (offer !== lastWorkoutOffer && !S.board[workoutId]) {
+    if (offer !== lastWorkoutOffer && !S.board[workoutId] && remaining !== 0) {
       lastWorkoutOffer = offer;
       trackWorkout(WORKOUT_EVENTS.offered, workoutId);
     }
@@ -1501,7 +1679,7 @@ const lastCur={};let hopTimer=0;
 function boardVisible(){return !$('#v-board').classList.contains('hidden')&&$('#sess').classList.contains('hidden')}
 function queueHop(w,cur,open,n){
   if(!open)return;
-  if(!boardVisible())return; // remember the old square until the learner is back on the board
+  if(!boardVisible() || !$('.boardbox')?.getClientRects().length)return;
   const from=lastCur[w];lastCur[w]=cur;
   if(from===undefined||cur<=from||cur>=n)return;
   clearTimeout(hopTimer);hopTimer=setTimeout(()=>animateHop(from,cur),260);
@@ -1544,6 +1722,7 @@ function showTurn(){
   c.classList.remove('pulse');void c.offsetWidth;c.classList.add('pulse');
 }
 function playTile(t){
+  if(!t||!canPlayTile(t))return;
   if(t.k==='aula'){startLesson(t.li);return}
   if(t.k==='treino'){startSession(t.ui);return}
   if(t.k==='bau'){
@@ -1555,6 +1734,20 @@ function playTile(t){
   if(t.k==='quiz'||t.k==='sprint'||t.k==='rev'||t.k==='chefe')startBoardQuiz(t.w,t);
 }
 $('#v-board').addEventListener('click',e=>{
+  const toggle=e.target.closest('[data-map-toggle]');
+  if(toggle){
+    mapOpen=!mapOpen;
+    toggle.closest('.world-panel').classList.toggle('expanded',mapOpen);
+    toggle.setAttribute('aria-expanded',String(mapOpen));
+    toggle.textContent=mapOpen?'Recolher tabuleiro':'Ver tabuleiro';
+    return;
+  }
+  const todayButton=e.target.closest('[data-practice-tile]');
+  if(todayButton){
+    const tile=worldTile(todayButton.dataset.practiceTile);
+    if(tile)playTile(tile);
+    return;
+  }
   const workoutButton = e.target.closest('[data-workout-start]');
   if(workoutButton){startWorkout(workoutButton.dataset.workoutStart);return}
   const tb=e.target.closest('[data-test]');if(tb){startTest(+tb.dataset.test);return}
@@ -1673,6 +1866,149 @@ async function togglePush(on,hour){
   else if(!on&&deps.pushDisable){await deps.pushDisable();toast('Lembretes desativados.')}
   renderMe();renderBoard();
 }
+function learnedTopics(level?: number) {
+  const scores: Record<string, number> = {};
+  const topics = [];
+  for (const unit of UNITS) {
+    const id = 'unit:' + unit.id;
+    topics.push({ id, level: unit.lv, label: unitShareTopic(unit) });
+    scores[id] = S.units[unit.id] || 0;
+  }
+  for (const lesson of LESSONS) {
+    const id = 'lesson:' + lesson.id;
+    topics.push({ id, level: lesson.lv, label: lessonShareTopic(lesson) });
+    scores[id] = S.lessons[lesson.id] || 0;
+  }
+  if (level === undefined) {
+    for (const id of WORKOUT_IDS) {
+      topics.unshift({ id, level: -1, label: WORKOUTS[id].skill });
+      scores[id] = S.board[id] || 0;
+    }
+  }
+  return completedTopics(topics, scores, level);
+}
+
+function sessionShareButton() {
+  return sessionAchievement ? '<button class="share-text-action" type="button" data-share-result>Compartilhar conquista</button>' : '';
+}
+
+function worldBossAchievement(level, challengeTopics = [], score?) {
+  const boss = BOSSES[level];
+  const ids = [...new Set([...savedBossTopicIds(S.board, level), ...challengeTopics])];
+  const evidence = ids.map(id => bossTopicLabels.get(id)).filter(Boolean);
+  const topics = [...new Set([...learnedTopics(level), ...evidence])].slice(0, 3);
+  return {
+    ...bossAchievement(WORLD[level], boss?.name ?? '', topics, score),
+    portrait: boss ? '/bosses/boss-' + (level + 1) + '.webp' : undefined,
+    technique: techniqueFromBossEvidence(ids) ?? learnedTechnique(level),
+  };
+}
+
+function techniqueFromBossEvidence(ids: string[]) {
+  return practiceTechnique(ids.filter(id=>id.startsWith('technique-')).map(id=>id.slice('technique-'.length)));
+}
+
+function learnedTechnique(level?: number) {
+  const lessonIds = LESSONS.filter(lesson=>S.lessons[lesson.id] && (level===undefined || lesson.lv===level)).map(lesson=>lesson.id);
+  const unitIds = UNITS.filter(unit=>S.units[unit.id] && (level===undefined || unit.lv===level)).map(unit=>'unit-'+unit.id);
+  const workouts = level===undefined ? WORKOUT_IDS.filter(id=>S.board[id]) : [];
+  return practiceTechnique([...lessonIds, ...unitIds, ...workouts]);
+}
+
+function workoutAchievement(id, xp = 0) {
+  return {
+    title: 'Code review praticado!',
+    description: 'Completei um treino de code review em inglês.',
+    topics: [WORKOUTS[id].skill],
+    technique: practiceTechnique([id]),
+    result: xp ? '+' + xp + ' XP' : undefined,
+  };
+}
+
+function profileAchievements() {
+  const choices: { id: string; label: string; card: Achievement }[] = [];
+  const topics = learnedTopics();
+  const technique = learnedTechnique() ?? techniqueFromBossEvidence(WORLD.flatMap((_, level)=>savedBossTopicIds(S.board, level)));
+  const rank = rankOf(S.xp);
+  const streak = liveStreak();
+  if (S.xp > 0 || topics.length) {
+    choices.push({
+      id: 'progress',
+      label: 'Meu progresso',
+      card: {
+        title: 'Meu progresso no inglês',
+        description: 'Estou praticando inglês para o dia a dia em tecnologia.',
+        topics,
+        technique,
+        result: rank.name + ' · ' + S.xp + ' XP',
+      },
+    });
+  }
+  if (rank.i > 0) {
+    choices.push({
+      id: 'rank', label: 'Patente ' + rank.name,
+      card: { title: 'Subi de patente!', description: 'Cheguei a ' + rank.name + ' no Dev English Gym.', topics, technique, result: S.xp + ' XP' },
+    });
+  }
+  if (streak >= 3) {
+    choices.push({
+      id: 'streak', label: streak + ' dias seguidos',
+      card: { title: streak + ' dias seguidos!', description: 'Mantive uma rotina de inglês para devs.', topics, technique },
+    });
+  }
+  for (let level = 0; level < WORLD.length; level++) {
+    if (S.board[worldTiles(level).at(-1).key]) {
+      choices.push({ id: 'boss:' + level, label: 'Chefão de ' + WORLD[level], card: worldBossAchievement(level) });
+    }
+  }
+  for (const id of WORKOUT_IDS) {
+    if (!S.board[id]) continue;
+    const practice = WORKOUTS[id];
+    choices.push({
+      id: 'workout:' + id, label: practice.title,
+      card: workoutAchievement(id),
+    });
+  }
+  for (const lesson of LESSONS) {
+    if (!S.lessons[lesson.id]) continue;
+    const structure = practiceTechnique([lesson.id]);
+    if (!structure) continue;
+    choices.push({
+      id: 'structure:' + lesson.id,
+      label: 'Estrutura · ' + lesson.t,
+      card: { title: 'Inglês em prática', description: 'Concluí a aula “' + lesson.t + '”.', topics: [lessonShareTopic(lesson)], technique: structure },
+    });
+  }
+  for (const badge of BADGES) {
+    if (!S.badges.includes(badge.id)) continue;
+    choices.push({
+      id: 'badge:' + badge.id,
+      label: badge.t,
+      card: { title: badge.t, description: 'Conquistei este marco na minha trilha de inglês para devs.', topics, technique },
+    });
+  }
+  return choices;
+}
+
+function profileShareHtml() {
+  const choices = profileAchievements();
+  if (!choices.length) return '';
+  const selected = $('#share-achievement-select')?.value;
+  return '<section class="mecard profile-share"><h2>Compartilhar progresso</h2><label for="share-achievement-select">Escolha o que mostrar</label>'+
+    '<select id="share-achievement-select">'+choices.map(choice=>'<option value="'+choice.id+'"'+(choice.id===selected?' selected':'')+'>'+esc(choice.label)+'</option>').join('')+'</select>'+
+    '<button type="button" class="btn alt" data-share-profile>Ver card para compartilhar</button></section>';
+}
+
+const onShareClick = e => {
+  const button = e.target.closest('[data-share-result], [data-share-profile]');
+  if (!button) return;
+  const card = button.hasAttribute('data-share-result')
+    ? sessionAchievement
+    : profileAchievements().find(choice => choice.id === $('#share-achievement-select').value)?.card;
+  if (card) achievementShare.open(card, button);
+};
+root.addEventListener('click', onShareClick);
+
 function renderMe(){
   updateHeader();
   const r=rankOf(S.xp),st=liveStreak(),mu=mult(st),nm=nextMult(st),d=dayXpNow(),ms=MILESTONES.find(m=>m>st);
@@ -1680,7 +2016,7 @@ function renderMe(){
   const week=[],td=new Date(),wd=td.getDay();for(let k=0;k<7;k++){const x=new Date(td.getFullYear(),td.getMonth(),td.getDate()-wd+k),ds=dayStr(x);week.push('<span class="wd'+(S.days.includes(ds)?' on':'')+(k===wd?' now':'')+(k>wd?' future':'')+'" title="'+x.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'numeric'})+'"><i>'+'DSTQQSS'[k]+'</i></span>')}
   $('#v-me').innerHTML=
    '<section class="rankcard"><small>Sua patente</small><h1>'+esc(r.name)+'</h1><div class="prog"><i style="width:'+(r.pct*100)+'%"></i></div><p>'+(r.next?'<b>'+S.xp+'</b> xp · faltam <b>'+(r.next-S.xp)+'</b> para '+esc(r.nextName):'<b>'+S.xp+'</b> xp · topo da carreira!')+'</p></section>'+
-   '<div class="mecols">'+
+   profileShareHtml()+'<div class="mecols">'+
    '<section class="mecard"><h3>🔥 Ofensiva</h3><p class="bign">'+st+'<span> '+(st===1?'dia':'dias')+'</span></p><div class="week">'+week.join('')+'</div>'+
      '<ul class="perks"><li><span>Bônus de XP agora</span><b>'+(mu>1?pct(mu):'nenhum')+'</b></li>'+(nm?'<li><span>Com '+nm[0]+' dias</span><b>'+pct(nm[1])+'</b></li>':'')+
      '<li><span>Proteções 🛡️</span><b>'+S.freezes+'/'+MAX_FREEZES+'</b></li>'+(ms?'<li><span>Próximo marco: '+ms+' dias</span><b>+'+ms*5+' xp</b></li>':'')+'</ul>'+
@@ -1714,10 +2050,10 @@ const acctLabel=()=>{const a=$('#acct');if(!a)return;const l=deps.accountLabel()
 $('#acct').addEventListener('click',()=>deps.account());
 acctLabel();
 return {
-  destroy(){clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);try{if(tbObs)tbObs.disconnect()}catch(e){}try{if(browserVoice())speechSynthesis.cancel()}catch(e){}try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
-  openReviewChat,
+  destroy(){root.removeEventListener('click',onShareClick);achievementShare.destroy();clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);try{if(tbObs)tbObs.disconnect()}catch(e){}try{if(browserVoice())speechSynthesis.cancel()}catch(e){}try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
+  resumePractice,
   // Sign-out: forget this device's progress and the open conversation.
-  reset(){S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
+  reset(){S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;mapOpen=false;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   setState(p){S=Object.assign(DEF(),p||{});checkBadges([]);renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   refresh(){acctLabel();renderChat();renderHome();renderLearn();renderBoard();if(!$('#v-me').classList.contains('hidden'))renderMe()},
 }
