@@ -1,5 +1,5 @@
-:root{color-scheme:light dark;--violet:#7b4dff;--ink:#2b1b5a;--muted:#696090;--bg:#f6f2ff;--card:#fff;--line:#ded4f7}
-@media (prefers-color-scheme:dark){:root{--ink:#f6f2ff;--muted:#bdb2e6;--bg:#1b1530;--card:#262042;--line:#3d335f;--violet:#a98bff}}
+:root{color-scheme:light dark;--violet:#6684e6;--ink:#1b2a5a;--muted:#606b90;--bg:#faf9f7;--card:#fff;--line:#ebe7e0}
+@media (prefers-color-scheme:dark){:root{--ink:#faf9f7;--muted:#b2bee6;--bg:#1c1f29;--card:#272c3b;--line:#333d5f;--violet:#9bafef}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Nunito,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:760px;margin:0 auto;padding:28px 20px 64px}

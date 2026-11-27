@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <rect width="120" height="120" rx="28" fill="#7B4DFF"/>
+  <rect width="120" height="120" rx="28" fill="#6684E6"/>
   <g transform="translate(10 8) scale(.84)">
-    <path d="M14 46a46 40 0 0 1 92 0" fill="none" stroke="#2B1B5A" stroke-width="6" stroke-linecap="round"/>
-    <path d="M24 30h72a16 16 0 0 1 16 16v34a16 16 0 0 1-16 16H58l-20 16V96H24A16 16 0 0 1 8 80V46a16 16 0 0 1 16-16z" fill="#FFC93C" stroke="#2B1B5A" stroke-width="5" stroke-linejoin="round"/>
-    <rect x="4" y="46" width="14" height="26" rx="7" fill="#2ED3A0" stroke="#2B1B5A" stroke-width="4"/>
-    <rect x="102" y="46" width="14" height="26" rx="7" fill="#2ED3A0" stroke="#2B1B5A" stroke-width="4"/>
-    <circle cx="45" cy="58" r="7" fill="#2B1B5A"/><circle cx="75" cy="58" r="7" fill="#2B1B5A"/>
+    <path d="M14 46a46 40 0 0 1 92 0" fill="none" stroke="#1B2A5A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M24 30h72a16 16 0 0 1 16 16v34a16 16 0 0 1-16 16H58l-20 16V96H24A16 16 0 0 1 8 80V46a16 16 0 0 1 16-16z" fill="#FFC93C" stroke="#1B2A5A" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="4" y="46" width="14" height="26" rx="7" fill="#2ED3A0" stroke="#1B2A5A" stroke-width="4"/>
+    <rect x="102" y="46" width="14" height="26" rx="7" fill="#2ED3A0" stroke="#1B2A5A" stroke-width="4"/>
+    <circle cx="45" cy="58" r="7" fill="#1B2A5A"/><circle cx="75" cy="58" r="7" fill="#1B2A5A"/>
     <circle cx="47.5" cy="55.5" r="2.4" fill="#fff"/><circle cx="77.5" cy="55.5" r="2.4" fill="#fff"/>
-    <path d="M50 72q10 10 20 0" fill="none" stroke="#2B1B5A" stroke-width="5" stroke-linecap="round"/>
+    <path d="M50 72q10 10 20 0" fill="none" stroke="#1B2A5A" stroke-width="5" stroke-linecap="round"/>
   </g>
 </svg>

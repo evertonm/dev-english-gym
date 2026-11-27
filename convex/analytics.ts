@@ -11,7 +11,7 @@ import { GUEST_LIMIT_SEEN, GUEST_LIMIT_SIGNED_IN, guestMetricEvents, summarizeGu
 const GLOBAL_AI_CAP = Number(process.env.AI_GLOBAL_DAILY_LIMIT ?? 450)
 
 // First-party usage metrics (no cookies, no third parties). Devices are a random id kept in the browser.
-const NAMES = new Set(["open", "lesson_done", "unit_done", "board_done", "dice", "chest", "signup", "ai_call", "ai_limit", "stt", GUEST_LIMIT_SEEN, GUEST_LIMIT_SIGNED_IN, ...Object.values(WORKOUT_EVENTS)])
+const NAMES = new Set(["open", "lesson_done", "unit_done", "board_done", "dice", "chest", "signup", "ai_call", "ai_limit", "stt", "onboard", "placement", "ref_share", "cert_share", "tool_open", GUEST_LIMIT_SEEN, GUEST_LIMIT_SIGNED_IN, ...Object.values(WORKOUT_EVENTS)])
 const ANON_RE = /^[a-z0-9]{8,40}$/
 
 export async function logEvent(ctx: MutationCtx, name: string, userId: Id<"users"> | null, anon = "", props = "") {
@@ -30,7 +30,7 @@ export const track = mutation({
       .withIndex("by_anon_day", (q) => q.eq("anon", anon).eq("day", utcDay()))
       .take(301)
     if (today.length > 300) return
-    await logEvent(ctx, name, userId, props ?? "")
+    await logEvent(ctx, name, userId, anon, props ?? "")
   },
 })
 

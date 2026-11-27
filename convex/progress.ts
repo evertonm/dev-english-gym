@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server"
 import { v } from "convex/values"
 import { getAuthUserId } from "@convex-dev/auth/server"
 import { logEvent } from "./analytics"
+import { addWeeklyXp } from "./social"
 import { MAX_XP_FIRST_SAVE, MAX_XP_GAIN_PER_DAY, utcDay } from "./perks"
 import { isWorkoutId } from "../shared/workout"
 import { BOSS_TOPIC_KEY } from "../shared/boss-topics"
@@ -152,10 +153,12 @@ export const save = mutation({
       const board = unionBoard(existing.board, data.board)
       const termo = pickTermo(existing.termo, data.termo)
       await ctx.db.patch(existing._id, { ...data, board, termo, xp, srvDay: day, srvGain: gainedToday + (xp - existing.xp) })
+      await addWeeklyXp(ctx, userId, xp - existing.xp)
       return { ok: true as const, xp }
     }
     const xp = Math.min(data.xp, MAX_XP_FIRST_SAVE)
     await ctx.db.insert("progress", { userId, ...data, xp, srvDay: day, srvGain: 0 })
+    await addWeeklyXp(ctx, userId, xp)
     await logEvent(ctx, "signup", userId)
     return { ok: true as const, xp }
   },

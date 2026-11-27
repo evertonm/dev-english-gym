@@ -3,11 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Dev English Gym · Inglês para desenvolvedores</title>
-    <meta name="description" content="Treine inglês de trabalho para devs brasileiros: daily, code review, entrevistas e propostas, com aulas curtas e conversa com IA." />
-    <meta property="og:title" content="Dev English Gym" />
-    <meta property="og:description" content="Inglês de trabalho para devs brasileiros, com aulas curtas e conversa com IA." />
-    <meta name="theme-color" content="#7B4DFF" />
+    <title>Dev English Gym | Inglês para desenvolvedores</title>
+    <meta name="description" content="Pratique inglês para dailies, code reviews e entrevistas. Explore a trilha do A2 ao C2 e experimente três atividades sem login." />
+    <link rel="canonical" href="https://dev-english-br.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://dev-english-br.vercel.app/" />
+    <meta property="og:title" content="Dev English Gym | Inglês para desenvolvedores" />
+    <meta property="og:description" content="Pratique inglês para dailies, code reviews e entrevistas. Experimente três atividades sem login." />
+    <meta property="og:image" content="https://dev-english-br.vercel.app/dev-english-preview.jpg" />
+    <meta property="og:image:alt" content="Prévia do tabuleiro e do treino de inglês do Dev English Gym" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"Course","name":"Dev English: inglês para desenvolvedores","description":"Curso livre de inglês para desenvolvedores brasileiros, do A2 ao C2, com entrevista simulada com IA e correção de mensagens de trabalho.","inLanguage":"pt-BR","isAccessibleForFree":true,"provider":{"@type":"Organization","name":"Dev English","url":"https://dev-english-br.vercel.app/"}}</script>
+    <meta name="theme-color" content="#081126" />
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('devenglish-theme')
+        if (savedTheme === 'light' || (savedTheme === 'auto' && !matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.dataset.theme = 'light'
+          document.querySelector('meta[name="theme-color"]').content = '#faf9f7'
+        }
+      } catch {}
+    </script>
     <meta name="application-name" content="Dev English" />
     <meta name="apple-mobile-web-app-title" content="Dev English" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -17,19 +34,23 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400..800&family=Nunito:wght@600;700;800&display=swap" />
     <style>
       /* Themed background before the app loads, so a slow start is never a white flash. */
-      html,body{margin:0;background:#f6f2ff}
-      @media (prefers-color-scheme:dark){html,body{background:#151126}}
-      .crash{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;font:16px/1.5 Nunito,system-ui,sans-serif;color:#2b1b5a}
-      @media (prefers-color-scheme:dark){.crash{color:#f6f2ff}}
+      html{color-scheme:dark;color:#eef4ff;background:#081126}
+      html[data-theme=light]{color-scheme:light;color:#1b2a5a;background:#faf9f7}
+      body{margin:0}
+      .crash{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:24px;text-align:center;font:16px/1.5 Nunito,system-ui,sans-serif}
       .crash-t{font-size:22px;font-weight:800;margin:0}
-      .crash button{margin-top:10px;font:inherit;font-weight:800;padding:12px 22px;border:0;border-radius:14px;background:#7b4dff;color:#fff;cursor:pointer}
+      .crash button{margin-top:10px;font:inherit;font-weight:800;padding:12px 22px;border:0;border-radius:14px;background:#6684e6;color:#fff;cursor:pointer}
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <h1>Dev English Gym | Inglês para desenvolvedores</h1>
+      <p>Pratique inglês para dailies, code reviews e entrevistas. Ative o JavaScript para experimentar as primeiras atividades.</p>
+    </noscript>
     <script>
       // If the app script never starts (e.g. an old cached page after an update), offer a reload.
       setTimeout(function () {

@@ -25,6 +25,7 @@ import type * as progress from "../progress.js";
 import type * as push from "../push.js";
 import type * as pushMemes from "../pushMemes.js";
 import type * as pushNode from "../pushNode.js";
+import type * as social from "../social.js";
 import type * as tts from "../tts.js";
 
 import type {
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   push: typeof push;
   pushMemes: typeof pushMemes;
   pushNode: typeof pushNode;
+  social: typeof social;
   tts: typeof tts;
 }>;
 

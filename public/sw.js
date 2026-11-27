@@ -12,13 +12,14 @@ self.addEventListener('push', (event) => {
     badge: '/logo192.png',
     tag: 'daily-reminder',
     renotify: true,
-    data: { url: data.url || '/' },
+    data: { url: data.url && data.url !== '/' ? data.url : '/app' },
   }))
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || '/'
+  const target = event.notification.data && event.notification.data.url
+  const url = target && target !== '/' ? target : '/app'
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     for (const c of all) { if ('focus' in c) { c.navigate && c.navigate(url).catch(() => {}); return c.focus() } }

@@ -47,9 +47,9 @@ async function createShareImage(card: Achievement): Promise<Blob | null> {
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  ctx.fillStyle = '#f6f0ff'
+  ctx.fillStyle = '#f9f8f6'
   ctx.fillRect(0, 0, 1080, 1080)
-  ctx.fillStyle = '#38126a'
+  ctx.fillStyle = '#12276a'
   ctx.fillRect(0, 0, 1080, 12)
   const [logo, portrait] = await Promise.all([
     loadImage('/logo192.png'),
@@ -57,19 +57,19 @@ async function createShareImage(card: Achievement): Promise<Blob | null> {
   ])
   if (logo) ctx.drawImage(logo, 64, 54, 88, 88)
   if (portrait) {
-    ctx.fillStyle = '#e9dcff'
+    ctx.fillStyle = '#f1efea'
     ctx.beginPath()
     ctx.arc(906, 153, 91, 0, Math.PI * 2)
     ctx.fill()
     ctx.drawImage(portrait, 817, 65, 178, 178)
   }
-  ctx.fillStyle = '#38126a'
+  ctx.fillStyle = '#12276a'
   ctx.font = '800 37px system-ui'
   ctx.fillText('Dev English Gym', 171, 113)
-  ctx.fillStyle = '#230e3f'
+  ctx.fillStyle = '#1f232e'
   ctx.font = '800 68px system-ui'
   let y = drawLines(ctx, card.title, 72, 218, portrait ? 710 : 936, 75)
-  ctx.fillStyle = '#4b3068'
+  ctx.fillStyle = '#303d68'
   ctx.font = '600 39px system-ui'
   y = drawLines(ctx, card.description, 72, y + 6, 936, 53)
 
@@ -79,18 +79,18 @@ async function createShareImage(card: Achievement): Promise<Blob | null> {
     ctx.beginPath()
     ctx.roundRect(72, y - 8, Math.min(ctx.measureText(card.result).width + 52, 936), 62, 22)
     ctx.fill()
-    ctx.fillStyle = '#38126a'
+    ctx.fillStyle = '#12276a'
     ctx.fillText(card.result, 98, y + 33, 884)
     y += 80
   }
   if (card.topics.length) {
     const topicTop = y + 8
     const topicBottom = card.technique ? 768 : 972
-    ctx.fillStyle = '#e9dcff'
+    ctx.fillStyle = '#f1efea'
     ctx.beginPath()
     ctx.roundRect(72, topicTop, 936, topicBottom - topicTop, 28)
     ctx.fill()
-    ctx.fillStyle = '#38126a'
+    ctx.fillStyle = '#12276a'
     ctx.font = '800 32px system-ui'
     ctx.fillText('O que pratiquei', 111, topicTop + 49)
     y = topicTop + 98
@@ -113,16 +113,16 @@ async function createShareImage(card: Achievement): Promise<Blob | null> {
     ctx.beginPath()
     ctx.roundRect(72, top, 936, 198, 26)
     ctx.fill()
-    ctx.fillStyle = '#38126a'
+    ctx.fillStyle = '#12276a'
     ctx.font = '800 25px system-ui'
     ctx.fillText('Estrutura em inglês', 110, top + 45)
     ctx.font = '800 33px system-ui'
     const exampleY = drawLines(ctx, card.technique.pattern, 110, top + 90, 850, 40) + 6
-    ctx.fillStyle = '#4b3068'
+    ctx.fillStyle = '#303d68'
     ctx.font = 'italic 31px system-ui'
     drawLines(ctx, `“${card.technique.example}”`, 110, exampleY, 850, 37)
   }
-  ctx.fillStyle = '#4b3068'
+  ctx.fillStyle = '#303d68'
   ctx.font = '600 26px system-ui'
   ctx.fillText('dev-english-br.vercel.app', 72, 1026)
   return new Promise(resolve => canvas.toBlob(resolve, 'image/png'))

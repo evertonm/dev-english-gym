@@ -77,6 +77,27 @@ export default defineSchema({
   })
     .index("by_endpoint", ["endpoint"])
     .index("by_hour", ["hour"]),
+  // Public nickname and invite code (no e-mail is ever shown to other learners).
+  profiles: defineTable({
+    userId: v.id("users"),
+    nick: v.string(),
+    refCode: v.string(),
+    refBy: v.optional(v.id("users")),
+    refCount: v.number(),
+    bonusUntil: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_code", ["refCode"]),
+  // Weekly league: one row per learner per week; groups of 20 inside a division.
+  league: defineTable({ userId: v.id("users"), week: v.string(), div: v.number(), cohort: v.number(), xp: v.number(), nick: v.string() })
+    .index("by_user_week", ["userId", "week"])
+    .index("by_group", ["week", "div", "cohort", "xp"]),
+  // Course certificates, one per finished world, checked publicly by code.
+  certificates: defineTable({ code: v.string(), userId: v.id("users"), world: v.number(), name: v.string(), ts: v.number() })
+    .index("by_code", ["code"])
+    .index("by_user", ["userId", "world"]),
+  // Mock interview results (score only; the transcript is not stored).
+  interviews: defineTable({ userId: v.id("users"), role: v.string(), stage: v.string(), overall: v.number(), ts: v.number() }).index("by_user", ["userId"]),
   // Cached text-to-speech audio (see tts.ts) and the daily count of new generations.
   ttsCache: defineTable({ hash: v.string(), storageId: v.id("_storage"), ts: v.number() }).index("by_hash", ["hash"]),
   ttsDaily: defineTable({ day: v.string(), count: v.number() }).index("by_day", ["day"]),
@@ -91,7 +112,8 @@ export default defineSchema({
   })
     .index("by_day", ["day"])
     .index("by_anon_day", ["anon", "day"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_user_ts", ["userId", "ts"]),
   // AI calls made by the whole app per day, to stay inside the Gemini project quota.
   aiGlobal: defineTable({
     day: v.string(),

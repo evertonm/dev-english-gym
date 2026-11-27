@@ -1,5 +1,12 @@
 {
-  "rewrites": [{ "source": "/((?!assets/|.*\\.[a-z0-9]+$).*)", "destination": "/index.html" }],
+  "redirects": [
+    { "source": "/:page(mundos|conversa|frases|perfil|entrevista|corretor|liga|relatorio|convite|certificados|admin)", "destination": "/app/:page", "permanent": true }
+  ],
+  "rewrites": [
+    { "source": "/app", "destination": "/index.html" },
+    { "source": "/app/:page(mundos|conversa|frases|perfil|entrevista|corretor|liga|relatorio|convite|certificados|admin)", "destination": "/index.html" },
+    { "source": "/certificado/:code([a-z0-9]{10})", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

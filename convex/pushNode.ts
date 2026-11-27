@@ -3,6 +3,7 @@ import webpush from "web-push"
 import { internalAction } from "./_generated/server"
 import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
+import { APP_HOME } from "../shared/routes"
 
 // Delivers the reminders chosen by push.due (runs every hour from crons.ts).
 export const sendDue = internalAction({
@@ -18,7 +19,7 @@ export const sendDue = internalAction({
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify({ title: s.title, body: s.body, url: "/" }),
+          JSON.stringify({ title: s.title, body: s.body, url: APP_HOME }),
           { TTL: 6 * 3600, urgency: "normal" },
         )
         sent++
