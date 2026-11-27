@@ -421,7 +421,9 @@ export default function App() {
     setMounted(true)
     // Service worker for reminders; then read whether this browser already has them on.
     void registerSW().then(async () => {
-      pushInfo.current = { status: await pushStatus(), hour: pushHour() }
+      const status = await pushStatus()
+      if (gymRef.current !== handle) return
+      pushInfo.current = { status, hour: pushHour() }
       handle.refresh()
     })
     // One "open" per device per day: daily actives and retention.

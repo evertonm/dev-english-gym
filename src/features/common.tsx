@@ -88,8 +88,13 @@ export function stopVoice() {
   interviewVoice.stop()
 }
 
-export function playVoice(tts: ((a: { text: string; lang: 'pt' | 'en' }) => Promise<{ ok: boolean; url?: string }>) | null, text: string) {
+export function unlockInterviewVoice() {
+  interviewVoice.unlock()
+}
+
+export function playVoice(tts: ((a: { text: string; lang: 'pt' | 'en' }) => Promise<{ ok: boolean; url?: string }>) | null, text: string, done?: () => void) {
   interviewVoice.play(text, {
+    done,
     fetchUrl: tts ? async () => {
       const result = await tts({ text: text.slice(0, 600), lang: 'en' })
       return result.ok ? result.url : undefined
@@ -97,6 +102,7 @@ export function playVoice(tts: ((a: { text: string; lang: 'pt' | 'en' }) => Prom
     fallback: typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined' ? done => {
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.lang = 'en-US'
+      utterance.voice = speechSynthesis.getVoices().find(voice => /en[-_]US/i.test(voice.lang) && /Google|Samantha|Natural/i.test(voice.name)) ?? null
       utterance.onend = done
       utterance.onerror = done
       speechSynthesis.speak(utterance)

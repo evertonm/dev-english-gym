@@ -8,6 +8,7 @@ import { APP_TABS, normalizedPath } from '../../shared/routes'
 import { UNITS, LESSONS, LEVELS } from './data'
 import { CONVERSATION_SCENARIOS as SCEN, conversationSuggestion } from '../../shared/conversation'
 import { createSpeechPlayer } from './speech'
+import { canRecordReply, coachMuted, createReplyRecorder, replyControls, setCoachMuted } from './spoken-reply'
 import { pronOf } from './pron'
 import { WHY } from './why'
 import { EXPLAIN } from './explain'
@@ -108,7 +109,9 @@ const MARKUP = `<div class="app">
     <div id="log"></div>
   </main>
   <div class="composer hidden" id="composer">
-    <button class="ico hidden" id="mic" aria-label="Falar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <span id="reply-status" class="note" role="status" hidden></span>
+    <button class="btn" id="reply-mic" type="button">Falar</button>
+    <button class="linkbtn" id="reply-type" type="button">Prefiro digitar</button>
     <input id="say" type="text" lang="en" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="send" data-gramm="false" placeholder="Type in English…" aria-label="Sua resposta em inglês">
     <button class="ico send" id="send" aria-label="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
   </div>
@@ -138,6 +141,7 @@ const MARKUP = `<div class="app">
 
 export function mountGym(root: HTMLElement, deps: GymDeps): GymHandle {
 root.innerHTML = MARKUP
+const rootEvents = new AbortController();
 const achievementShare = mountAchievementShare(root);
 let sessionAchievement: Achievement | null = null;
 // "How it sounds" line under an English sentence (US English, spelled for Brazilians).
@@ -313,9 +317,9 @@ function todayHtml(){
 }
 
 /* ---------- voice: browser speech synthesis + recognition (free, no server) ---------- */
-let voiceMode=false;
 let sess=null,les=null,rev=null;
 let chat={scen:null,msgs:[],items:[],busy:false,err:''};
+let chatPhase='ready', chatTyping=false, chatMuted=coachMuted();
 const conversationInteractions=new Map();
 const conversationInteractionKey=account=>'devenglish-conversation-practice:'+account;
 function conversationLastInteraction(account){
@@ -332,9 +336,8 @@ function markConversationInteraction(){
 const CHATLV_KEY='devenglish-chatlv';
 const maxChatLevel=()=>(deps.quota()||{}).admin?PROG-1:openLv();
 function chatLevel(){let v=-1;try{const r=localStorage.getItem(CHATLV_KEY);if(r!==null&&r!=='')v=+r}catch(e){}const mx=maxChatLevel();return v<0||v>mx?mx:v}
-// What the mic heard goes into the box; the learner checks it (and fixes it) before sending.
-const chatSink=text=>{const i=$('#say');i.value=(i.value+' '+text).trim();i.classList.add('heard');setTimeout(()=>i.classList.remove('heard'),1800);try{i.focus()}catch(e){}if(voiceMode)toast('Confira o texto e toque em enviar '+ic('arrow-right'))};
-let dictSink=chatSink;
+// Lessons set a sink while they are listening for pronunciation practice.
+let dictSink=null;
 let listening=false;
 function makeDict(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return null;
@@ -413,9 +416,7 @@ const narrOn=()=>{try{return localStorage.getItem(NARR_KEY)!=='off'}catch(e){ret
 // Natural voice (OpenAI TTS, cached on the server) with the device voice as fallback.
 const player=typeof Audio!=='undefined'?new Audio():null;
 const voicePlayer=createSpeechPlayer(player,()=>{if(browserVoice())speechSynthesis.cancel()});
-if(player){player.preload='auto';
-  // iPhone only lets audio play after a tap: play a silent clip on the first touch to unlock the player.
-  root.addEventListener('pointerdown',()=>{if(player.dataset.ok)return;player.dataset.ok='1';try{player.src='data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//NwwAAAAAAAAAAAAEluZm8AAAAPAAAABgAAAykAWlpaWlpaWlpaWlpaWlpaWnt7e3t7e3t7e3t7e3t7e3t7nJycnJycnJycnJycnJycnL29vb29vb29vb29vb29vb293t7e3t7e3t7e3t7e3t7e3t7/////////////////////AAAAAExhdmM2MC4zMQAAAAAAAAAAAAAAACQCowAAAAAAAAMpso+sIAAAAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NCxKMAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NAxKQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/80LEowAAA0gAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU=';player.play().catch(()=>{})}catch(e){}},true)}
+if(player){player.preload='auto';root.addEventListener('pointerdown',voicePlayer.unlock,{capture:true,signal:rootEvents.signal})}
 function stopAudio(){voicePlayer.stop()}
 function playTTS(text,lang,{slow,done,fallback}){
   voicePlayer.play(lang+'|'+text,{
@@ -452,19 +453,25 @@ function speak(text,slow,done){
   playTTS(text,'en',{slow,done,fallback:finish=>browserSpeak(text,slow,finish)});
 }
 const sameText=(a,b)=>norm(a).join(' ')===norm(b).join(' ');
-function listenForReply(){
-  if(!voiceMode||!dict||listening||!chat.scen||chat.busy||les||sess||rev)return;
-  if($('#v-chat').classList.contains('hidden'))return;
-  dict.start().catch(()=>{});
+const replyRecorder=createReplyRecorder(deps.transcribe,phase=>{
+  chatPhase=phase;renderChatComposer();
+},text=>{
+  const input=$('#say');input.value=text.slice(0,600);chatTyping=true;renderChatComposer();input.focus();
+},message=>{chat.err=message;renderChat()});
+function interruptChat(){
+  stopAudio();
+  replyRecorder.cancel();
+  chatPhase=chat.busy?'waiting':'ready';
 }
 function speakChatReply(text){
+  if(chatMuted||!text||document.hidden||$('#v-chat').classList.contains('hidden')){chatPhase='ready';renderChat();return}
   const current=chat;
-  speak(text,false,()=>setTimeout(()=>{if(chat===current)listenForReply()},250));
+  chatPhase='speaking';renderChat();
+  speak(text,false,()=>{if(chat===current&&chatPhase==='speaking'){chatPhase='ready';renderChatComposer()}});
 }
 if(dict){try{
-  dict.onFinal(({text,alts})=>dictSink(text,alts||[text]));
-  dict.onState(({state})=>{listening=state==='listening';$('#mic').classList.toggle('rec',listening);if(les)speakState();else if(voiceMode&&!sess&&!rev)renderChat()});
-  $('#mic').classList.remove('hidden');
+  dict.onFinal(({text,alts})=>dictSink?.(text,alts||[text]));
+  dict.onState(({state})=>{listening=state==='listening';if(les)speakState()});
 }catch(e){dict=null}}
 const aiErr=c=>{
   if(c==='LIMIT'){const q=deps.quota();return 'Você usou suas '+(q?q.limit:'')+' mensagens de hoje com a IA. Volte amanhã!'+(q&&q.next?' Chegando a '+q.next.rank+', o limite sobe para '+q.next.limit+'.':'')}
@@ -665,7 +672,7 @@ function closeSession(fromHistory){
     $('#sess').setAttribute('aria-label', 'Treino');
   }
   if(sessHist){sessHist=false;if(!fromHistory&&location.hash==='#atividade'){try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}}
-  xw=null;tm=null;emo=null;$('#sess').classList.add('hidden');sess=null;les=null;rev=null;dictSink=chatSink;if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}stopAudio();renderHome();renderLearn();boardSel=null;renderBoard();
+  xw=null;tm=null;emo=null;$('#sess').classList.add('hidden');sess=null;les=null;rev=null;dictSink=null;if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}stopAudio();renderHome();renderLearn();boardSel=null;renderBoard();
   if(restoreWorkoutFocus) $('[data-workout-start]')?.focus({preventScroll:true});
 }
 
@@ -725,7 +732,7 @@ function finishPlacement(){
   boardW=lv;
   const r=award(les.right*2),gain=r.total;
   try{deps.track('placement','lv'+lv);localStorage.setItem('gym.placed','1')}catch(e){}
-  dictSink=chatSink;les.over=true;$('#bar').style.width='100%';
+  dictSink=null;les.over=true;$('#bar').style.width='100%';
   const rows=byLv.map((n,w)=>'<li><span class="ptag">'+LEVELS[w].tag+'</span> '+esc(LEVELS[w].t)+' <b>'+n+'/'+PLACE_PER+'</b></li>').join('');
   $('#sbody').innerHTML='<div class="end">'+MASCOT+'<p class="big">Seu nível: '+esc(LEVELS[lv].tag)+' · '+esc(LEVELS[lv].t)+'</p>'+
     '<ul class="placelist">'+rows+'</ul><div class="kv"><div><b>'+les.right+'/'+les.L.q.length+'</b>certas</div><div><b>+'+gain+'</b>xp</div></div>'+
@@ -746,7 +753,7 @@ function startLesson(li){
 }
 const listenRow=()=>canSpeak()?'<div class="listen"><button class="play" data-act="say" aria-label="Ouvir">'+SPK+'</button><button class="pill" data-act="slow">Mais devagar</button></div>':'';
 function renderStep(){
-  const st=les.steps[les.pos],L=les.L;les.done=false;les.busy=false;les.heard='';les.say='';dictSink=chatSink;
+  const st=les.steps[les.pos],L=les.L;les.done=false;les.busy=false;les.heard='';les.say='';dictSink=null;
   $('#bar').style.width=(les.pos/les.steps.length*100)+'%';
   const fb=$('#fb');fb.className='fb';let h='';
   if(st.k==='card'){
@@ -824,7 +831,7 @@ function finishTest(){
   const lv=les.test,need=Math.ceil(les.L.q.length*.8),pass=les.right>=need;
   if(pass)S.lvl=Math.max(S.lvl||0,lv);
   const r=award(les.right*5),gain=r.total;
-  dictSink=chatSink;les.over=true;$('#bar').style.width='100%';
+  dictSink=null;les.over=true;$('#bar').style.width='100%';
   $('#sbody').innerHTML='<div class="end">'+MASCOT+pushAsk()+'<p class="big">'+(pass?esc(LEVELS[lv].t)+' liberado!':'Quase lá!')+'</p><div class="kv"><div><b>'+les.right+'/'+les.L.q.length+'</b>certas (precisa '+need+')</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r,!pass)+
     '<p class="note">'+(pass?'Você pulou direto para o '+esc(LVNAME(lv))+'.':'Faça as aulas do '+esc(LEVELS[lv-1].t)+' ou tente o teste de novo mais tarde.')+'</p></div>';
   const fb=$('#fb');fb.className='fb';fb.innerHTML='<button class="btn" id="back">Voltar</button>';
@@ -849,7 +856,7 @@ function finishBoard(){
   if(pass&&b.kind==='chefe'&&!LEVELS[b.w].free)S.lvl=Math.min(PROG-1,Math.max(S.lvl||0,b.w+1));
   const bonus=pass&&first?{quiz:10,sprint:15,rev:15,chefe:50,daily:40}[b.kind]||0:0;
   const r=award(les.right*5+bonus),gain=r.total;
-  dictSink=chatSink;les.over=true;$('#bar').style.width='100%';
+  dictSink=null;les.over=true;$('#bar').style.width='100%';
   const nextW=b.w+1<PROG?WORLD[b.w+1]:'';
   const title=pass?(b.kind==='chefe'?'Chefão derrotado!':b.kind==='daily'?'Desafio do dia concluído!':b.kind==='emoji'?'Emoji idioms: mandou bem!':'Casa concluída!'):'Quase lá!';
   const note=b.kind==='emoji'?(pass?(first?'Bônus de hoje garantido. Jogue mais rodadas para aprender novas expressões!':'Rodada extra feita. São quase 100 expressões!'):'Precisava de '+b.need+' acertos. Jogue outra rodada!'):b.kind==='daily'?(pass?(first?'Bônus de hoje garantido. Amanhã tem perguntas novas!':'Treino extra feito. Amanhã tem perguntas novas!'):'Precisava de '+b.need+' acertos. Tente de novo!'):pass?(b.kind==='chefe'?(nextW?nextW+' liberada! Seu peão já pode entrar no próximo mundo.':'Você zerou o jogo. Respeito!'):'Seu peão avança no tabuleiro.'):'Precisava de '+b.need+' acertos. Revise e tente de novo.';
@@ -882,7 +889,7 @@ function finishLesson(){
     technique: practiceTechnique([L.id]),
     result: les.right + '/' + L.q.length + ' acertos · +' + gain + ' XP',
   };
-  dictSink=chatSink;les.over=true;
+  dictSink=null;les.over=true;
   $('#bar').style.width='100%';
   $('#sbody').innerHTML='<div class="end">'+MASCOT+pushAsk()+'<div class="stars">'+[1,2,3].map(i=>i<=st?'<i>'+ic('star:f')+'</i>':ic('star:f')).join('')+'</div><p class="big">Aula feita: '+esc(L.t)+'!</p><div class="kv"><div><b>'+les.right+'/'+L.q.length+'</b>exercícios certos</div><div><b>+'+gain+'</b>xp</div></div>'+rewardsHtml(r)+'</div>';
   const fb=$('#fb');fb.className='fb';
@@ -920,7 +927,7 @@ function parseAI(t){
 }
 async function turn(){
   const current=chat;
-  chat.busy=true;chat.err='';renderChat();
+  chat.busy=true;chatPhase='waiting';chat.err='';renderChat();
   let r=null;
   try{r=await deps.chat(chat.scen,chat.msgs,chatLevel())}catch(e){r={ok:false,code:'ERROR'}}
   if(chat!==current)return;
@@ -935,32 +942,32 @@ async function turn(){
       if(typeof o.better==='string'&&o.better&&!sameText(o.better,last.text)){try{deps.addMistake(last.text,o.better,typeof o.tip==='string'?o.tip:'')}catch(e){}}
     }
     chat.items.push({who:'ai',reply:o.reply,pt:o.pt||'',hint:o.hint||''});
-    if(voiceMode&&o.reply){chat.busy=false;renderChat();speakChatReply(o.reply);return}
+    chat.busy=false;chatTyping=false;speakChatReply(o.reply);return;
   }else{
     chat.err=aiErr(r&&r.code);
     if(chat.msgs.length&&chat.msgs[chat.msgs.length-1].role==='user'&&chat.items.length){const it=chat.items.pop();chat.msgs.pop();if(it.who==='me')$('#say').value=it.text}
     if(!chat.items.length){chat.scen=null;chat.msgs=[]}
   }
-  chat.busy=false;renderChat();
+  chat.busy=false;chatPhase='ready';chatTyping=Boolean($('#say').value);renderChat();
 }
 function startScen(id){
   if(!deps.isAuthed()){deps.login();return}
   if(chat.busy)return;
   const scene=SCEN.find(item=>item.id===id);
   if(!scene||(scene.xp&&S.xp<scene.xp&&!(deps.quota()||{}).admin))return;
-  stopAudio();
+  interruptChat();
   if(listening&&dict)dict.stop().catch(()=>{});
   markConversationInteraction();
   chat={scen:id,msgs:[],items:[],busy:false,err:''};
+  chatTyping=false;
   $('#say').value='';
   if(!scene.opening){void turn();return}
   chat.msgs.push({role:'assistant',content:scene.opening.reply});
   chat.items.push({who:'ai',...scene.opening});
-  renderChat();
-  if(voiceMode)speakChatReply(scene.opening.reply);
+  speakChatReply(scene.opening.reply);
 }
 function sendMsg(){
-  const i=$('#say'),t=i.value.trim();if(!t||chat.busy||!chat.scen||!deps.isAuthed())return;
+  const i=$('#say'),t=i.value.trim();if(!t||chatPhase!=='ready'||chat.busy||!chat.scen||!deps.isAuthed())return;
   if(chat.msgs.length>=60){chat.err='Essa conversa chegou ao fim. Escolha uma situação para começar outra.';renderChat();return}
   if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}
   i.value='';chat.items.push({who:'me',text:t.slice(0,600)});chat.msgs.push({role:'user',content:t.slice(0,600)});turn();
@@ -968,7 +975,7 @@ function sendMsg(){
 function renderChat(){
   const on=!$('#v-chat').classList.contains('hidden');
   const selected=SCEN.find(scene=>scene.id===chat.scen);
-  $('#scen').innerHTML=(deps.isAuthed()?'<button class="pill vm" data-voice="1" aria-pressed="'+voiceMode+'">'+(voiceMode?'Voz ligada':'Modo voz')+'</button><label class="lvpick">Nível <select id="chatlv" aria-label="Nível da conversa">'+LEVELS.slice(0,maxChatLevel()+1).map((V,i)=>'<option value="'+i+'"'+(i===chatLevel()?' selected':'')+'>'+V.tag+' · '+esc(V.t)+'</option>').join('')+'</select></label>':'')+
+  $('#scen').innerHTML=(deps.isAuthed()?'<button class="pill vm" data-voice="1">'+(chatMuted?'Ativar voz da IA':'Silenciar voz da IA')+'</button><label class="lvpick">Nível <select id="chatlv" aria-label="Nível da conversa">'+LEVELS.slice(0,maxChatLevel()+1).map((V,i)=>'<option value="'+i+'"'+(i===chatLevel()?' selected':'')+'>'+V.tag+' · '+esc(V.t)+'</option>').join('')+'</select></label>':'')+
     (selected?'<button class="pill" data-chat-end'+(chat.busy?' disabled':'')+'>Encerrar: '+esc(selected.t)+'</button>':'')+quotaHtml();
   let h=selected?'':conversationChoices();
   if(selected?.practice)h+='<p class="note">'+esc(selected.practice)+'</p>';
@@ -977,15 +984,28 @@ function renderChat(){
       ((m.better||m.tip)?'<div class="fix">'+(m.better?'<small>Mais natural</small><span class="en" lang="en">'+esc(m.better)+'</span>':'')+(m.tip?'<span>'+esc(m.tip)+'</span>':'')+'</div>':'');
     const lastAi=k===chat.items.length-1;
     return '<div class="msg ai"><span class="en" lang="en">'+esc(m.reply)+'</span>'+(m.showPt&&m.pt?'<span class="pt">'+esc(m.pt)+'</span>':'')+(m.showHint&&m.hint?'<span class="pt">Você pode dizer:</span><span class="en" lang="en">'+esc(m.hint)+'</span>':'')+
-      '<div class="tools">'+(canSpeak()?'<button data-m="say" data-k="'+k+'">Ouvir</button>':'')+(m.pt&&!m.showPt?'<button data-m="pt" data-k="'+k+'">Traduzir</button>':'')+(lastAi&&m.hint&&!m.showHint?'<button data-m="hint" data-k="'+k+'">Não sei o que dizer</button>':'')+'</div></div>';
+      '<div class="tools">'+(canSpeak()&&!chatMuted?'<button data-m="say" data-k="'+k+'">Ouvir</button>':'')+(m.pt&&!m.showPt?'<button data-m="pt" data-k="'+k+'">Traduzir</button>':'')+(lastAi&&m.hint&&!m.showHint?'<button data-m="hint" data-k="'+k+'">Não sei o que dizer</button>':'')+'</div></div>';
   }).join('');
   if(chat.busy)h+='<div class="typing">digitando…</div>';
-  else if(voiceMode&&listening)h+='<div class="typing">ouvindo… fale em inglês</div>';
-  else if(voiceMode&&chat.scen)h+='<p class="note">Modo voz: a IA fala a resposta e o microfone abre sozinho. Toque no microfone se ele não abrir.</p>';
   if(chat.err)h+='<p class="note">'+esc(chat.err)+'</p>';
   $('#log').innerHTML=h;
-  $('#composer').classList.toggle('hidden',!(on&&deps.isAuthed()&&chat.scen));
+  renderChatComposer();
   if(on&&selected){const m=$('#v-chat');m.scrollTop=m.scrollHeight}
+}
+
+function renderChatComposer(){
+  const visible=!$('#v-chat').classList.contains('hidden')&&deps.isAuthed()&&chat.scen;
+  $('#composer').classList.toggle('hidden',!visible);
+  const hasMicrophone=canRecordReply();
+  const {canRecord,canStop,canType}=replyControls(chatPhase,hasMicrophone);
+  const mic=$('#reply-mic');
+  mic.hidden=!canRecord&&!canStop;
+  mic.textContent=canStop?'Parar gravação':'Falar';
+  $('#reply-type').hidden=!canType||chatTyping||!hasMicrophone;
+  $('#say').hidden=$('#send').hidden=!canType||(!chatTyping&&hasMicrophone);
+  const status=$('#reply-status');
+  status.textContent={waiting:'Aguardando resposta…',speaking:'A IA está falando…',opening:'Abrindo microfone…',recording:'Gravando sua resposta em inglês…',transcribing:'Transcrevendo sua resposta…'}[chatPhase]||'';
+  status.hidden=!status.textContent;
 }
 
 function conversationChoices(){
@@ -1016,7 +1036,7 @@ $('#v-chat').addEventListener('click',e=>{
   if(b.dataset.login){deps.login();return}
   if(b.hasAttribute('data-chat-end')){
     if(chat.busy)return;
-    stopAudio();
+    interruptChat();
     if(listening&&dict)dict.stop().catch(()=>{});
     chat={scen:null,msgs:[],items:[],busy:false,err:''};
     renderChat();
@@ -1024,17 +1044,15 @@ $('#v-chat').addEventListener('click',e=>{
     return;
   }
   if(b.dataset.voice){
-    if(!dict){chat.err='Seu navegador não reconhece voz. No celular, use o Chrome.';renderChat();return}
-    voiceMode=!voiceMode;
-    if(!voiceMode){stopAudio();if(listening)dict.stop()}
+    chatMuted=!chatMuted;setCoachMuted(chatMuted);
+    if(chatMuted&&chatPhase==='speaking'){stopAudio();chatPhase='ready'}
     renderChat();
-    if(voiceMode){const last=chat.items[chat.items.length-1];if(last&&last.who==='ai')speakChatReply(last.reply)}
     return;
   }
   if(b.dataset.lockscen){const sc=SCEN.find(x=>x.id===b.dataset.lockscen);if(sc)toast(ic('lock')+' <b>'+esc(sc.t)+'</b> libera na patente '+esc(rankForXp(sc.xp))+' ('+sc.xp+' xp)');return}
   if(b.dataset.scen){startScen(b.dataset.scen);return}
   if(b.dataset.m){const m=chat.items[+b.dataset.k];if(!m)return;
-    if(b.dataset.m==='say'){speak(m.reply);return}
+    if(b.dataset.m==='say'){if(chatPhase==='ready')speakChatReply(m.reply);return}
     if(b.dataset.m==='pt')m.showPt=true;if(b.dataset.m==='hint')m.showHint=true;renderChat()}
 });
 $('#send').addEventListener('click',sendMsg);
@@ -1047,26 +1065,28 @@ root.addEventListener('click',e=>{
   const xwb=e.target.closest('[data-xword]');if(xwb){startXword();return}
   const tmb=e.target.closest('[data-termo]');if(tmb){startTermo();return}
   if(e.target.closest('[data-emoji]'))startEmoji();
-});
+},{signal:rootEvents.signal});
 root.addEventListener('click',e=>{
   const pn=e.target.closest('[data-panel]');if(pn&&deps.open){e.preventDefault();stopAudio();try{deps.track('tool_open',pn.dataset.panel.split(':')[0])}catch(err){}deps.open(pn.dataset.panel);return}
   const pl=e.target.closest('[data-placement]');if(pl){e.preventDefault();startPlacement()}
-});
-root.addEventListener('click',e=>{const b=e.target.closest('[data-login]');if(b&&!b.closest('#log')){e.preventDefault();deps.login()}});
+},{signal:rootEvents.signal});
+root.addEventListener('click',e=>{const b=e.target.closest('[data-login]');if(b&&!b.closest('#log')){e.preventDefault();deps.login()}},{signal:rootEvents.signal});
 $('#scen').addEventListener('change',e=>{if(e.target.id!=='chatlv')return;try{localStorage.setItem(CHATLV_KEY,e.target.value)}catch(err){}
   if(chat.scen&&!chat.busy){toast('Nível <b>'+esc(LEVELS[+e.target.value].tag)+'</b>: conversa recomeçada.');startScen(chat.scen)}});
 $('#say').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendMsg()}});
-$('#mic').addEventListener('click',()=>{
-  if(!dict)return;
-  if(listening){dict.stop().catch(()=>{});return}
-  dict.start().catch(()=>{dict=null;$('#mic').classList.add('hidden')});
+$('#reply-mic').addEventListener('click',()=>{
+  const {canRecord,canStop}=replyControls(chatPhase,canRecordReply());
+  if(canStop)replyRecorder.stop();
+  else if(canRecord){chat.err='';void replyRecorder.start()}
 });
+$('#reply-type').addEventListener('click',()=>{chatTyping=true;renderChatComposer();$('#say').focus()});
 
 /* ---------- tabs ---------- */
 // Each tab has its own URL, so refresh and the back button keep you where you were.
 const tabFromPath=()=>{const p=normalizedPath(location.pathname);for(const k in APP_TABS)if(APP_TABS[k]===p)return k;return null};
 function showTab(t,fromHistory){
-  if(t!=='chat'&&!$('#v-chat').classList.contains('hidden')){stopAudio();if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}}
+  if(t!=='chat'&&!$('#v-chat').classList.contains('hidden'))interruptChat();
+  if(t==='chat')chatMuted=coachMuted();
   if(!fromHistory&&APP_TABS[t]&&location.pathname!==APP_TABS[t]){try{history.pushState({tab:t},'',APP_TABS[t]+location.search)}catch(e){}}
   ['board','learn','home','chat','book','me'].forEach(n=>$('#v-'+n).classList.toggle('hidden',n!==t));
   root.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
@@ -1074,7 +1094,7 @@ function showTab(t,fromHistory){
   renderChat();
 }
 root.querySelector('nav.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)showTab(b.dataset.tab)});
-const onVis=()=>{if(document.hidden){stopAudio();if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}}else if(boardVisible()&&renderedWorkoutDay!==workoutDay())renderBoard()};
+const onVis=()=>{if(document.hidden){interruptChat();renderChatComposer();if(listening&&dict){try{dict.stop().catch(()=>{})}catch(e){}}}else if(boardVisible()&&renderedWorkoutDay!==workoutDay())renderBoard()};
 document.addEventListener('visibilitychange',onVis);
 const onPop=()=>{
   if(sessHist&&location.hash!=='#atividade'&&!$('#sess').classList.contains('hidden')){closeSession(true);return}
@@ -1957,7 +1977,7 @@ function paintSnd(){const b=$('#sndbtn');if(b){b.innerHTML=sndOn()?SND_ON:SND_OF
 paintSnd();
 $('#sndbtn').addEventListener('click',()=>{try{localStorage.setItem(SND_KEY,sndOn()?'off':'on')}catch(e){}paintSnd();sfx('ding')});
 // A soft tick on any button press; answers, dice and chests add their own sound on top.
-root.addEventListener('pointerdown',e=>{const b=e.target.closest('button');if(b&&!b.disabled&&b.id!=='sndbtn')sfx('tap')});
+root.addEventListener('pointerdown',e=>{const b=e.target.closest('button');if(b&&!b.disabled&&b.id!=='sndbtn')sfx('tap')},{signal:rootEvents.signal});
 
 /* ---------- theme: dark by default, with optional device preference ---------- */
 const THEME_KEY='devenglish-theme';
@@ -2167,7 +2187,7 @@ const onShareClick = e => {
     : profileAchievements().find(choice => choice.id === $('#share-achievement-select').value)?.card;
   if (card) achievementShare.open(card, button);
 };
-root.addEventListener('click', onShareClick);
+root.addEventListener('click', onShareClick,{signal:rootEvents.signal});
 
 function renderMe(){
   updateHeader();
@@ -2210,14 +2230,14 @@ const acctLabel=()=>{const a=$('#acct');if(!a)return;const l=deps.accountLabel()
 $('#acct').addEventListener('click',()=>deps.account());
 acctLabel();
 return {
-  destroy(){root.removeEventListener('click',onShareClick);achievementShare.destroy();clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);deviceTheme.removeEventListener('change',paintTheme);try{if(tbObs)tbObs.disconnect()}catch(e){}stopAudio();try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
+  destroy(){rootEvents.abort();achievementShare.destroy();clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);deviceTheme.removeEventListener('change',paintTheme);try{if(tbObs)tbObs.disconnect()}catch(e){}interruptChat();chat=null;try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
   resumePractice,
   startPlacement,
   getState(){return JSON.parse(JSON.stringify(S))},
   patch(p){Object.assign(S,p||{});save();renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   // Sign-out: forget this device's progress and the open conversation.
-  reset(){stopAudio();S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;mapOpen=false;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
+  reset(){interruptChat();chatPhase='ready';chatTyping=false;S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;mapOpen=false;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   setState(p){S=Object.assign(DEF(),p||{});checkBadges([]);renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},
-  refresh(){acctLabel();renderChat();renderHome();renderLearn();renderBoard();if(!$('#v-me').classList.contains('hidden'))renderMe()},
+  refresh(){if(chat.scen&&!deps.isAuthed())interruptChat();acctLabel();renderChat();renderHome();renderLearn();renderBoard();if(!$('#v-me').classList.contains('hidden'))renderMe()},
 }
 }

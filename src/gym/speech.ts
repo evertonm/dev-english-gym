@@ -11,6 +11,15 @@ export function createSpeechPlayer(audio: AudioPlayer | null, cancelLocal: () =>
   const urls = new Map<string, string>()
   const pending = new Map<string, Promise<string | undefined>>()
   let active: Playback | null = null
+  let unlocked = false
+
+  // Prime the audio element from a user gesture before asynchronous replies arrive.
+  function unlock() {
+    if (!audio || active || unlocked) return
+    unlocked = true
+    audio.src = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA=='
+    void audio.play().catch(() => { unlocked = false })
+  }
 
   function stop() {
     const previous = active
@@ -97,5 +106,5 @@ export function createSpeechPlayer(audio: AudioPlayer | null, cancelLocal: () =>
     })
   }
 
-  return { play, stop }
+  return { play, stop, unlock }
 }

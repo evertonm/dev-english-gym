@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAction, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
-import { FullPanel, NeedLogin, Seg, aiError, parseJson, playVoice, stopVoice } from './common'
+import { FullPanel, NeedLogin, Seg, aiError, parseJson, playVoice, stopVoice, unlockInterviewVoice } from './common'
 import { Icon } from './Icon'
+import { canRecordReply, coachMuted, createReplyRecorder, replyControls, setCoachMuted, type ReplyPhase } from '../gym/spoken-reply'
 
 type Turn = { role: 'user' | 'assistant'; content: string }
 type AiLine = { reply: string; pt?: string; better?: string; tip?: string; hint?: string; done?: boolean }
@@ -62,6 +63,7 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
   const interview = useAction(api.ai.interview)
   const makeReport = useAction(api.ai.interviewReport)
   const tts = useAction(api.tts.speak)
+  const transcribe = useAction(api.ai.transcribe)
   const history = useQuery(api.ai.interviewHistory, authed ? {} : 'skip')
   const [role, setRole] = useState('fullstack')
   const [stage, setStage] = useState('screen')
@@ -75,20 +77,68 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
   const [done, setDone] = useState(false)
   const [report, setReport] = useState<Report | null>(null)
   const [reportBusy, setReportBusy] = useState(false)
+  const [phase, setPhase] = useState<ReplyPhase>('waiting')
+  const [typing, setTyping] = useState(false)
+  const [muted, setMuted] = useState(coachMuted)
+  const mutedRef = useRef(muted)
+  const activeRef = useRef(false)
+  const recorderRef = useRef<ReturnType<typeof createReplyRecorder> | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }, [items, busy])
-  useEffect(() => () => stopVoice(), [])
+  useEffect(() => {
+    if (!authed) return
+    activeRef.current = true
+    const recorder = createReplyRecorder(
+      (audio, mime) => transcribe({ audio, mime }),
+      setPhase,
+      transcript => { setText(transcript.slice(0, 900)); setTyping(true) },
+      setErr,
+    )
+    recorderRef.current = recorder
+    const onVisibility = () => {
+      if (!document.hidden) return
+      stopVoice()
+      recorder.cancel()
+      setPhase(current => current === 'waiting' ? current : 'ready')
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      activeRef.current = false
+      recorderRef.current = null
+      recorder.cancel()
+      stopVoice()
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [authed, transcribe])
+
+  function narrate(reply: string) {
+    if (mutedRef.current || document.hidden || !reply) { setPhase('ready'); return }
+    setPhase('speaking')
+    playVoice(tts, reply, () => setPhase('ready'))
+  }
+
+  function toggleVoice() {
+    const next = !mutedRef.current
+    mutedRef.current = next
+    setMuted(next)
+    setCoachMuted(next)
+    if (next && phase === 'speaking') { stopVoice(); setPhase('ready') }
+    if (!next) unlockInterviewVoice()
+  }
 
   async function ask(next: Turn[]) {
     setBusy(true)
+    setPhase('waiting')
     setErr('')
     try {
       const r = await interview({ role, stage, level: +level, history: next })
+      if (!activeRef.current) return false
       if (!r.ok) {
         setErr(aiError(r.code))
+        setPhase('ready')
         return false
       }
       const line = parseJson<AiLine>(r.text) ?? { reply: r.text }
@@ -102,36 +152,42 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
         return out
       })
       if (line.done) setDone(true)
+      setTyping(false)
+      narrate(line.reply)
       return true
     } catch {
+      if (!activeRef.current) return false
       setErr(aiError('ERROR'))
+      setPhase('ready')
       return false
     } finally {
-      setBusy(false)
+      if (activeRef.current) setBusy(false)
     }
   }
 
   async function start() {
+    if (!mutedRef.current) unlockInterviewVoice()
     setStarted(true)
     setTurns([])
     setItems([])
     setDone(false)
     setReport(null)
     const ok = await ask([])
-    if (!ok) setStarted(false)
+    if (!ok && activeRef.current) setStarted(false)
   }
 
   async function send() {
     const t = text.trim()
-    if (!t || busy || done) return
+    if (!t || busy || reportBusy || done || phase !== 'ready') return
     setText('')
     const next: Turn[] = [...turns, { role: 'user', content: t }]
     setItems((old) => [...old, { who: 'me', text: t }])
     const ok = await ask(next)
-    if (!ok) {
+    if (!ok && activeRef.current) {
       // Give the text back so it can be sent again.
       setItems((old) => old.slice(0, -1))
       setText(t)
+      setTyping(true)
     }
   }
 
@@ -139,6 +195,8 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
     setReportBusy(true)
     setErr('')
     stopVoice()
+    recorderRef.current?.cancel()
+    setPhase('ready')
     try {
       const r = await makeReport({ role, stage, level: +level, history: turns })
       if (!r.ok) setErr(aiError(r.code))
@@ -156,6 +214,7 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
 
   const answers = turns.filter((t) => t.role === 'user').length
   const title = 'Simulador de entrevista'
+  const voiceToggle = <button className="pill" type="button" onClick={toggleVoice}>{muted ? 'Ativar voz da entrevistadora' : 'Silenciar voz da entrevistadora'}</button>
 
   if (!authed)
     return (
@@ -259,6 +318,7 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
         <p className="note"><strong>Como se preparar.</strong> {STAGE_PRACTICE[stage]}</p>
         <p className="lbl">Seu nível</p>
         <Seg label="Nível" value={level} options={LEVELS} onChange={setLevel} />
+        {voiceToggle}
         <button className="btn" type="button" onClick={() => void start()}>
           Começar entrevista
         </button>
@@ -281,15 +341,35 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
       </FullPanel>
     )
 
+  const hasMicrophone = canRecordReply()
+  const { canRecord, canStop, canType } = replyControls(busy || reportBusy ? 'waiting' : phase, hasMicrophone)
+  const replyStatus = {
+    waiting: 'Aguardando a próxima pergunta…',
+    speaking: 'A entrevistadora está falando…',
+    opening: 'Abrindo microfone…',
+    recording: 'Gravando sua resposta em inglês…',
+    transcribing: 'Transcrevendo sua resposta…',
+    ready: '',
+  }[phase]
   const footer = (
-    <div className="fx-in">
-      {done || answers >= 6 ? (
+    <div className="fx-in spoken-reply">
+      {replyStatus && <span className="note reply-status" role="status">{replyStatus}</span>}
+      {canType && (done || answers >= 6) ? (
         <button className="btn" type="button" style={{ flex: 1 }} disabled={reportBusy || answers < 2} onClick={() => void finish()}>
           {reportBusy ? 'Gerando relatório…' : 'Ver meu relatório'}
         </button>
-      ) : (
+      ) : !(done || answers >= 6) && (
         <>
+          {(canRecord || canStop) && <button className="btn" type="button" onClick={() => {
+            if (canStop) recorderRef.current?.stop()
+            else { setErr(''); void recorderRef.current?.start() }
+          }}>
+            {canStop ? 'Parar gravação' : 'Falar'}
+          </button>}
+          {canType && !typing && hasMicrophone && <button className="linkbtn" type="button" onClick={() => setTyping(true)}>Prefiro digitar</button>}
+          {canType && (typing || !hasMicrophone) && <>
           <textarea
+            autoFocus={typing}
             aria-label="Sua resposta em inglês"
             placeholder="Responda em inglês…"
             value={text}
@@ -306,6 +386,7 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
           <button className="btn" type="button" disabled={busy || !text.trim()} onClick={() => void send()}>
             Enviar
           </button>
+          </>}
         </>
       )}
     </div>
@@ -313,6 +394,7 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
 
   return (
     <FullPanel title={roleName(role) + ' · ' + stageName(stage)} onClose={onClose} footer={footer}>
+      {voiceToggle}
       <div className="qa">
         {items.map((m, i) =>
           m.who === 'ai' ? (
@@ -330,9 +412,9 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
                 </>
               )}
               <div className="tools">
-                <button type="button" onClick={() => void playVoice(tts, m.line.reply)}>
+                {!muted && <button type="button" disabled={phase !== 'ready'} onClick={() => narrate(m.line.reply)}>
                   Ouvir
-                </button>
+                </button>}
                 {m.line.pt && !m.showPt && (
                   <button type="button" onClick={() => setItems((o) => o.map((x, k) => (k === i ? { ...x, showPt: true } : x)))}>
                     Traduzir
@@ -370,7 +452,7 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
         )}
         {busy && <div className="typing">entrevistador digitando…</div>}
         {err && <p className="note">{err}</p>}
-        {!done && answers >= 2 && answers < 6 && !busy && (
+        {!done && answers >= 2 && answers < 6 && canType && (
           <button className="linkbtn" type="button" onClick={() => void finish()} disabled={reportBusy}>
             {reportBusy ? 'Gerando relatório…' : 'Encerrar agora e ver relatório'}
           </button>
