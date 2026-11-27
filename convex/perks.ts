@@ -42,13 +42,6 @@ export function nextAiTier(xp: number): { xp: number; limit: number; rank: strin
   return t ? { ...t, rank: rankName(t.xp) } : null
 }
 
-// Conversation scenarios that need a minimum rank. Scenarios not listed are open to everyone.
-export const SCENARIO_MIN_XP: Record<string, number> = {
-  incident: 500, // Pleno I
-  salary: 1500, // Sênior I
-  cto: 3600, // Tech Lead
-}
-
 // Most XP an account can gain in one server day. A very active day with the 2x streak bonus
 // stays well under it; it stops a tampered client from jumping straight to the top rank.
 export const MAX_XP_GAIN_PER_DAY = 3000

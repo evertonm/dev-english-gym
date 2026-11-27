@@ -93,16 +93,6 @@ export const UNITS: any[] =[
 ["We chose it for its reliability.","Escolhemos pela confiabilidade.","reliability"],
 ["It's a trade-off between speed and cost.","É um trade-off entre velocidade e custo.","between"]]}
 ];
-export const SCEN: any[] =[
-{id:'recruiter',t:'Recrutador',role:'a friendly tech recruiter doing a first screening call for a remote senior developer position'},
-{id:'standup',t:'Daily',role:'an engineering manager running the daily standup meeting of a software team'},
-{id:'review',t:'Code review',role:'a teammate discussing a pull request that the learner opened'},
-{id:'behavioral',t:'Entrevista',role:'a hiring manager asking behavioral interview questions about teamwork, deadlines, conflict and mistakes'},
-{id:'tech',t:'Papo técnico',role:'a senior engineer asking the learner to explain a past project and its technical decisions'},
-{id:'incident',t:'Incidente em produção',xp:500,role:'an engineering manager during a production incident'},
-{id:'salary',t:'Negociar salário',xp:1500,role:'a recruiter making a job offer'},
-{id:'cto',t:'Entrevista com CTO',xp:3600,role:'the CTO of a startup in a final interview'}
-];
 export const LESSONS: any[] =[
 {id:'past',t:'Passado',s:'Contar o que você fez',c:[
  {h:'O que você fez',pt:'Verbo + ed. Use pra ontem, semana passada, projeto antigo.',ex:[["I fixed the bug yesterday.","Corrigi o bug ontem."],["We deployed last week.","Fizemos deploy semana passada."]]},

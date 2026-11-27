@@ -32,6 +32,12 @@ const STAGES: [string, string][] = [
   ['behavioral', 'Comportamental'],
   ['final', 'Final com CTO'],
 ]
+const STAGE_PRACTICE: Record<string, string> = {
+  screen: 'Prepare um resumo da sua experiência, por que a vaga faz sentido para você e sua disponibilidade de horário.',
+  technical: 'Escolha um projeto real. Explique o problema, a decisão técnica, as alternativas e o resultado.',
+  behavioral: 'Pense em uma história real. Conte a situação, o que você precisava fazer, o que fez e qual foi o resultado (STAR).',
+  final: 'Prepare exemplos de decisões e prioridades. Explique como você avaliou o impacto para clientes e para a equipe.',
+}
 const LEVELS: [string, string][] = [
   ['0', 'A2'],
   ['1', 'B1'],
@@ -244,12 +250,13 @@ export function InterviewPanel({ authed, onClose, onLogin }: { authed: boolean; 
     return (
       <FullPanel title={title} onClose={onClose}>
         <p className="note">
-          Uma entrevista de verdade, em inglês, com {6} perguntas. Cada resposta recebe uma versão mais natural, e no fim você ganha nota, pontos fortes e o que melhorar.
+          Simule uma etapa de um processo seletivo internacional em inglês, com até seis perguntas, feedback nas respostas e um relatório no fim.
         </p>
         <p className="lbl">Vaga</p>
         <Seg label="Vaga" value={role} options={ROLES} onChange={setRole} />
         <p className="lbl">Etapa</p>
         <Seg label="Etapa" value={stage} options={STAGES} onChange={setStage} />
+        <p className="note"><strong>Como se preparar.</strong> {STAGE_PRACTICE[stage]}</p>
         <p className="lbl">Seu nível</p>
         <Seg label="Nível" value={level} options={LEVELS} onChange={setLevel} />
         <button className="btn" type="button" onClick={() => void start()}>

@@ -917,6 +917,23 @@ html,body,#root{height:100%;margin:0}
 .gym .practice-heading .bhud .gl b { font-size: 11px }
 .gym .practice-heading .bhud .prog { height: 6px }
 .gym .practice-grid { display: grid; align-items: start; gap: 14px }
+.gym .conversation-card, .gym .chat-paths section {
+  border: 1px solid hsl(var(--violet) / .42);
+  border-radius: 19px;
+  background: linear-gradient(125deg, hsl(var(--violet) / .12), transparent 75%), hsl(var(--surface));
+  padding: clamp(14px, 2vw, 22px);
+}
+.gym .conversation-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px }
+.gym .conversation-card h2, .gym .chat-paths h2 { margin: 0 0 6px; font: 800 21px/1.15 var(--display) }
+.gym .conversation-card p, .gym .chat-paths p { margin: 0; color: hsl(var(--muted)); font-size: 14px }
+.gym .conversation-actions, .gym .chat-scenarios { display: flex; flex-wrap: wrap; align-items: center; gap: 8px }
+.gym .conversation-actions .btn { display: flex; align-items: center; gap: 8px }
+.gym .conversation-actions .btn svg { width: 18px; height: 18px }
+.gym .chat-title { margin: 0 0 4px; font: 800 clamp(26px, 4vw, 38px)/1.12 var(--display) }
+.gym .chat-paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; gap: 14px }
+.gym .chat-paths section { display: grid; justify-items: start; gap: 9px }
+.gym .chat-paths h2 { margin-bottom: 0 }
+.gym .chat-scenarios .pill { white-space: normal; text-align: left }
 .gym .today-practice, .gym .world-panel {
   min-width: 0;
   border: 1px solid hsl(var(--board-rim));

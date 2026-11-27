@@ -275,6 +275,9 @@ export default function App() {
     try {
       history.replaceState({}, '', panelBack.current)
       window.dispatchEvent(new PopStateEvent('popstate'))
+      if (panel === 'interview' && panelBack.current === APP_TABS.chat) {
+        requestAnimationFrame(() => hostRef.current?.querySelector<HTMLElement>('[data-panel="interview"]')?.focus())
+      }
     } catch {
       /* ignore */
     }
@@ -327,10 +330,11 @@ export default function App() {
   const mergedFor = useRef<string | null>(null)
   const lastServer = useRef('')
   const email = me && me.ok ? me.email : ''
+  const conversationAccount = me && me.ok && progress?.ok ? me.userId : null
 
   // The engine is mounted once; it reads the latest values through this ref.
-  const live = useRef({ vapid, pushSubscribe, pushUnsubscribe, pushState, isAuthenticated, isLoading, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track })
-  live.current = { vapid, pushSubscribe, pushUnsubscribe, pushState, isAuthenticated, isLoading, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track }
+  const live = useRef({ vapid, pushSubscribe, pushUnsubscribe, pushState, isAuthenticated, isLoading, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track, conversationAccount })
+  live.current = { vapid, pushSubscribe, pushUnsubscribe, pushState, isAuthenticated, isLoading, saveProgress, chat, correct, transcribe, tts, due, addMistake, reviewMistake, quota, initials, track, conversationAccount }
 
   useEffect(() => {
     const host = hostRef.current
@@ -372,6 +376,7 @@ export default function App() {
             ? readWho()
             : 'Entrar',
       chat: (scenario, history, level) => live.current.chat({ scenario, history, level }),
+      conversationAccount: () => live.current.conversationAccount,
       correct: (lessonId, text) => live.current.correct({ lessonId, text }),
       transcribe: (audio, mime) => live.current.transcribe({ audio, mime }),
       tts: (text, lang) => live.current.tts({ text, lang }),
@@ -447,7 +452,7 @@ export default function App() {
   const quotaKey = quota ? `${quota.used}/${quota.limit}/${quota.admin}` : ''
   useEffect(() => {
     gymRef.current?.refresh()
-  }, [dueCount, quotaKey, initials, isAuthenticated, isLoading])
+  }, [dueCount, quotaKey, initials, isAuthenticated, isLoading, conversationAccount])
   useEffect(() => {
     if (isAuthenticated && initials) writeWho(initials)
     else if (!isAuthenticated && !isLoading) writeWho('')
@@ -519,7 +524,7 @@ export default function App() {
           Dev English
         </div>
       )}
-      <div ref={hostRef} style={{ height: '100%' }} inert={modal === 'guest-login'} />
+      <div ref={hostRef} style={{ height: '100%' }} inert={modal === 'guest-login' || panel !== null} />
       {(modal === 'login' || modal === 'guest-login') && <LoginSheet key={modal} limited={modal === 'guest-login'} onClose={() => {
         loginResume.current = null
         try { sessionStorage.removeItem(LOGIN_RESUME_KEY) } catch {}

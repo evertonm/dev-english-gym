@@ -67,7 +67,7 @@ export const me = query({
     const userId = await getAuthUserId(ctx)
     if (!userId) return { ok: false as const, code: "UNAUTHENTICATED" as const }
     const user = await ctx.db.get(userId)
-    return { ok: true as const, email: user?.email ?? "" }
+    return { ok: true as const, email: user?.email ?? "", userId }
   },
 })
 

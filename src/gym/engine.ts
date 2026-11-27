@@ -5,7 +5,9 @@ import { WORLD_NAMES } from './worlds'
 import { ic } from './icons'
 import { placementLevel } from '../../shared/week'
 import { APP_TABS, normalizedPath } from '../../shared/routes'
-import { UNITS, SCEN, LESSONS, LEVELS } from './data'
+import { UNITS, LESSONS, LEVELS } from './data'
+import { CONVERSATION_SCENARIOS as SCEN, conversationSuggestion } from '../../shared/conversation'
+import { createSpeechPlayer } from './speech'
 import { pronOf } from './pron'
 import { WHY } from './why'
 import { EXPLAIN } from './explain'
@@ -63,6 +65,7 @@ export type GymDeps = {
   account: () => void
   accountLabel: () => string
   chat: (scenario: string, history: { role: 'user' | 'assistant'; content: string }[], level: number) => Promise<AiResult>
+  conversationAccount?: () => string | null
   correct: (lessonId: string, text: string) => Promise<AiResult>
   addMistake: (wrong: string, better: string, tip: string) => void
   dueMistakes: () => { id: string; wrong: string; better: string; tip: string }[]
@@ -100,6 +103,7 @@ const MARKUP = `<div class="app">
   <main id="v-home" class="hidden"></main>
 
   <main id="v-chat" class="hidden">
+    <h1 class="chat-title" tabindex="-1">Conversa com IA</h1>
     <div class="scen" id="scen"></div>
     <div id="log"></div>
   </main>
@@ -312,6 +316,18 @@ function todayHtml(){
 let voiceMode=false;
 let sess=null,les=null,rev=null;
 let chat={scen:null,msgs:[],items:[],busy:false,err:''};
+const conversationInteractions=new Map();
+const conversationInteractionKey=account=>'devenglish-conversation-practice:'+account;
+function conversationLastInteraction(account){
+  const recent=conversationInteractions.get(account)||0;
+  try{return Math.max(recent,Number(localStorage.getItem(conversationInteractionKey(account)))||0)}catch(e){return recent}
+}
+function markConversationInteraction(){
+  const account=deps.conversationAccount?.();if(!account)return;
+  const time=Date.now();
+  conversationInteractions.set(account,time);
+  try{localStorage.setItem(conversationInteractionKey(account),String(time))}catch(e){}
+}
 // Conversation level follows the learner's open level (CEFR); they can pick a lower one.
 const CHATLV_KEY='devenglish-chatlv';
 const maxChatLevel=()=>(deps.quota()||{}).admin?PROG-1:openLv();
@@ -384,7 +400,7 @@ function makeMic(){
 }
 let dict=makeMic();
 const browserVoice=()=>{try{return 'speechSynthesis' in window&&typeof SpeechSynthesisUtterance!=='undefined'}catch(e){return false}};
-const canSpeak=()=>browserVoice();
+const canSpeak=()=>browserVoice()||Boolean(player&&deps.tts);
 let enVoice=null;
 let ptVoice=null;
 const pickVoice=()=>{try{const vs=speechSynthesis.getVoices();enVoice=vs.find(v=>/en[-_]US/i.test(v.lang)&&/Google|Samantha|Natural/i.test(v.name))||vs.find(v=>/en[-_]US/i.test(v.lang))||null;
@@ -395,26 +411,29 @@ try{if(browserVoice()){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}}ca
 const NARR_KEY='devenglish-narration';
 const narrOn=()=>{try{return localStorage.getItem(NARR_KEY)!=='off'}catch(e){return true}};
 // Natural voice (OpenAI TTS, cached on the server) with the device voice as fallback.
-const ttsUrls=new Map();let ttsSeq=0;
 const player=typeof Audio!=='undefined'?new Audio():null;
+const voicePlayer=createSpeechPlayer(player,()=>{if(browserVoice())speechSynthesis.cancel()});
 if(player){player.preload='auto';
   // iPhone only lets audio play after a tap: play a silent clip on the first touch to unlock the player.
   root.addEventListener('pointerdown',()=>{if(player.dataset.ok)return;player.dataset.ok='1';try{player.src='data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//NwwAAAAAAAAAAAAEluZm8AAAAPAAAABgAAAykAWlpaWlpaWlpaWlpaWlpaWnt7e3t7e3t7e3t7e3t7e3t7nJycnJycnJycnJycnJycnL29vb29vb29vb29vb29vb293t7e3t7e3t7e3t7e3t7e3t7/////////////////////AAAAAExhdmM2MC4zMQAAAAAAAAAAAAAAACQCowAAAAAAAAMpso+sIAAAAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NCxKMAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NAxKQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/80LEowAAA0gAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU=';player.play().catch(()=>{})}catch(e){}},true)}
-function stopAudio(){ttsSeq++;try{if(player){player.onended=null;player.onerror=null;player.pause()}}catch(e){}try{if(browserVoice())speechSynthesis.cancel()}catch(e){}}
-async function playTTS(text,lang,opt){
-  const seq=++ttsSeq,o=opt||{};const key=lang+'|'+text;
-  let url=ttsUrls.get(key);
-  if(!url&&deps.tts){try{const r=await deps.tts(text.slice(0,900),lang);if(r&&r.ok&&r.url){url=r.url;ttsUrls.set(key,url)}}catch(e){}}
-  if(seq!==ttsSeq)return; // something else started playing meanwhile
-  if(!url||!player){if(o.fallback)o.fallback();return}
-  try{player.onended=()=>{if(seq===ttsSeq&&o.done)o.done()};player.onerror=()=>{if(seq===ttsSeq&&o.fallback)o.fallback()};
-    player.src=url;player.playbackRate=o.slow?0.72:1;await player.play()}catch(e){if(seq===ttsSeq&&o.fallback)o.fallback()}
+function stopAudio(){voicePlayer.stop()}
+function playTTS(text,lang,{slow,done,fallback}){
+  voicePlayer.play(lang+'|'+text,{
+    rate:slow?0.72:1,
+    done,
+    fallback:browserVoice()?fallback:undefined,
+    fetchUrl:deps.tts?async()=>{const result=await deps.tts(text.slice(0,900),lang);return result.ok?result.url:undefined}:undefined,
+  });
 }
-function narrate(parts){
-  try{if(!browserVoice())return;speechSynthesis.cancel();
-    parts.forEach(([text,lang])=>{if(!text)return;const u=new SpeechSynthesisUtterance(text);u.lang=lang==='pt'?'pt-BR':'en-US';
-      const v=lang==='pt'?ptVoice:enVoice;if(v)u.voice=v;u.rate=lang==='pt'?1.02:0.9;speechSynthesis.speak(u)});
-  }catch(e){}
+function narrate(parts,done){
+  const lines=parts.filter(([text])=>text);
+  if(!lines.length){done();return}
+  try{
+    lines.forEach(([text,lang],index)=>{const u=new SpeechSynthesisUtterance(text);u.lang=lang==='pt'?'pt-BR':'en-US';
+      const v=lang==='pt'?ptVoice:enVoice;if(v)u.voice=v;u.rate=lang==='pt'?1.02:0.9;
+      if(index===lines.length-1){u.onend=done;u.onerror=done}
+      speechSynthesis.speak(u)});
+  }catch(e){done()}
 }
 function narrateCard(st,L){
   if(!narrOn()||!st||st.k!=='card')return;
@@ -422,22 +441,25 @@ function narrateCard(st,L){
   const parts=[[st.c.h+'. '+x,'pt']];
   if(st.c.ex.length){parts.push(['Por exemplo:','pt']);st.c.ex.slice(0,3).forEach(e=>{parts.push([sayable(e[0]),'en']);if(e[1]&&!/^(soa|igual|rima)/i.test(e[1]))parts.push([e[1],'pt'])})}
   const script=parts.map(([t])=>/[.!?:]$/.test(t)?t:t+'.').join(' ');
-  stopAudio();playTTS(script,'pt',{fallback:()=>narrate(parts)});
+  playTTS(script,'pt',{fallback:done=>narrate(parts,done)});
 }
 function browserSpeak(text,slow,done){
-  try{if(browserVoice()){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';if(enVoice)u.voice=enVoice;u.rate=slow?0.6:0.92;if(done){u.onend=done;u.onerror=done}speechSynthesis.speak(u);return}}catch(e){}
+  try{if(browserVoice()){const u=new SpeechSynthesisUtterance(text);u.lang='en-US';if(enVoice)u.voice=enVoice;u.rate=slow?0.6:0.92;if(done){u.onend=done;u.onerror=done}speechSynthesis.speak(u);return}}catch(e){}
   if(done)done();
 }
 function speak(text,slow,done){
-  stopAudio();
-  if(!text){if(done)done();return}
-  playTTS(text,'en',{slow,done,fallback:()=>browserSpeak(text,slow,done)});
+  if(!text){stopAudio();if(done)done();return}
+  playTTS(text,'en',{slow,done,fallback:finish=>browserSpeak(text,slow,finish)});
 }
 const sameText=(a,b)=>norm(a).join(' ')===norm(b).join(' ');
 function listenForReply(){
   if(!voiceMode||!dict||listening||!chat.scen||chat.busy||les||sess||rev)return;
   if($('#v-chat').classList.contains('hidden'))return;
   dict.start().catch(()=>{});
+}
+function speakChatReply(text){
+  const current=chat;
+  speak(text,false,()=>setTimeout(()=>{if(chat===current)listenForReply()},250));
 }
 if(dict){try{
   dict.onFinal(({text,alts})=>dictSink(text,alts||[text]));
@@ -897,9 +919,11 @@ function parseAI(t){
   return {reply:t.trim(),pt:'',better:'',tip:'',hint:''};
 }
 async function turn(){
+  const current=chat;
   chat.busy=true;chat.err='';renderChat();
   let r=null;
   try{r=await deps.chat(chat.scen,chat.msgs,chatLevel())}catch(e){r={ok:false,code:'ERROR'}}
+  if(chat!==current)return;
   if(r&&r.ok){
     const o=parseAI(r.text||'');
     chat.msgs.push({role:'assistant',content:(o.reply||r.text).slice(0,1000)});
@@ -911,7 +935,7 @@ async function turn(){
       if(typeof o.better==='string'&&o.better&&!sameText(o.better,last.text)){try{deps.addMistake(last.text,o.better,typeof o.tip==='string'?o.tip:'')}catch(e){}}
     }
     chat.items.push({who:'ai',reply:o.reply,pt:o.pt||'',hint:o.hint||''});
-    if(voiceMode&&o.reply){chat.busy=false;renderChat();speak(o.reply,false,()=>setTimeout(listenForReply,250));return}
+    if(voiceMode&&o.reply){chat.busy=false;renderChat();speakChatReply(o.reply);return}
   }else{
     chat.err=aiErr(r&&r.code);
     if(chat.msgs.length&&chat.msgs[chat.msgs.length-1].role==='user'&&chat.items.length){const it=chat.items.pop();chat.msgs.pop();if(it.who==='me')$('#say').value=it.text}
@@ -922,7 +946,18 @@ async function turn(){
 function startScen(id){
   if(!deps.isAuthed()){deps.login();return}
   if(chat.busy)return;
-  chat={scen:id,msgs:[],items:[],busy:false,err:''};turn();
+  const scene=SCEN.find(item=>item.id===id);
+  if(!scene||(scene.xp&&S.xp<scene.xp&&!(deps.quota()||{}).admin))return;
+  stopAudio();
+  if(listening&&dict)dict.stop().catch(()=>{});
+  markConversationInteraction();
+  chat={scen:id,msgs:[],items:[],busy:false,err:''};
+  $('#say').value='';
+  if(!scene.opening){void turn();return}
+  chat.msgs.push({role:'assistant',content:scene.opening.reply});
+  chat.items.push({who:'ai',...scene.opening});
+  renderChat();
+  if(voiceMode)speakChatReply(scene.opening.reply);
 }
 function sendMsg(){
   const i=$('#say'),t=i.value.trim();if(!t||chat.busy||!chat.scen||!deps.isAuthed())return;
@@ -932,15 +967,16 @@ function sendMsg(){
 }
 function renderChat(){
   const on=!$('#v-chat').classList.contains('hidden');
-  $('#scen').innerHTML=(deps.isAuthed()?'<button class="pill vm" data-voice="1" aria-pressed="'+voiceMode+'">'+(voiceMode?'Voz ligada':'Modo voz')+'</button>':'')+SCEN.map(s=>(s.xp&&S.xp<s.xp&&!(deps.quota()||{}).admin)?'<button class="pill lockd" data-lockscen="'+s.id+'" title="Libera em '+esc(rankForXp(s.xp))+'">'+ic('lock')+' '+esc(s.t)+'</button>':'<button class="pill" data-scen="'+s.id+'" aria-pressed="'+(chat.scen===s.id)+'">'+esc(s.t)+'</button>').join('')+(deps.isAuthed()?'<label class="lvpick">Nível <select id="chatlv" aria-label="Nível da conversa">'+LEVELS.slice(0,maxChatLevel()+1).map((V,i)=>'<option value="'+i+'"'+(i===chatLevel()?' selected':'')+'>'+V.tag+' · '+esc(V.t)+'</option>').join('')+'</select></label>':'')+quotaHtml();
-  let h=deps.open&&!chat.scen?'<div class="toolrow"><button class="toolcard" data-panel="interview"><span>'+ic('microphone')+'</span><b>Simulador de entrevista</b><small>Entrevista completa com nota e relatório</small></button><button class="toolcard" data-panel="tools"><span>'+ic('writing')+'</span><b>Corretor de mensagens</b><small>Slack, e-mail, PR, LinkedIn e currículo</small></button></div>':'';
-  if(!deps.isAuthed())h+='<div class="empty">'+MASCOT+'<p>Converse em inglês com a IA em situações reais: recrutador, daily, code review e entrevista. Ela responde em inglês simples e corrige o que você escrever. Entre com seu e-mail para começar, é grátis.</p><button class="btn" data-login="1">Entrar com e-mail</button></div>';
-  else if(!chat.scen)h+='<div class="empty">'+MASCOT+'<p>Escolha uma situação acima. A IA faz o papel da outra pessoa, fala inglês simples e corrige o que você escrever.</p><button class="btn" data-scen="recruiter">Começar com o recrutador</button></div>';
+  const selected=SCEN.find(scene=>scene.id===chat.scen);
+  $('#scen').innerHTML=(deps.isAuthed()?'<button class="pill vm" data-voice="1" aria-pressed="'+voiceMode+'">'+(voiceMode?'Voz ligada':'Modo voz')+'</button><label class="lvpick">Nível <select id="chatlv" aria-label="Nível da conversa">'+LEVELS.slice(0,maxChatLevel()+1).map((V,i)=>'<option value="'+i+'"'+(i===chatLevel()?' selected':'')+'>'+V.tag+' · '+esc(V.t)+'</option>').join('')+'</select></label>':'')+
+    (selected?'<button class="pill" data-chat-end'+(chat.busy?' disabled':'')+'>Encerrar: '+esc(selected.t)+'</button>':'')+quotaHtml();
+  let h=selected?'':conversationChoices();
+  if(selected?.practice)h+='<p class="note">'+esc(selected.practice)+'</p>';
   h+=chat.items.map((m,k)=>{
-    if(m.who==='me')return '<div class="msg me"><span class="en">'+esc(m.text)+'</span></div>'+
-      ((m.better||m.tip)?'<div class="fix">'+(m.better?'<small>Mais natural</small><span class="en">'+esc(m.better)+'</span>':'')+(m.tip?'<span>'+esc(m.tip)+'</span>':'')+'</div>':'');
+    if(m.who==='me')return '<div class="msg me"><span class="en" lang="en">'+esc(m.text)+'</span></div>'+
+      ((m.better||m.tip)?'<div class="fix">'+(m.better?'<small>Mais natural</small><span class="en" lang="en">'+esc(m.better)+'</span>':'')+(m.tip?'<span>'+esc(m.tip)+'</span>':'')+'</div>':'');
     const lastAi=k===chat.items.length-1;
-    return '<div class="msg ai"><span class="en">'+esc(m.reply)+'</span>'+(m.showPt&&m.pt?'<span class="pt">'+esc(m.pt)+'</span>':'')+(m.showHint&&m.hint?'<span class="pt">Você pode dizer:</span><span class="en">'+esc(m.hint)+'</span>':'')+
+    return '<div class="msg ai"><span class="en" lang="en">'+esc(m.reply)+'</span>'+(m.showPt&&m.pt?'<span class="pt">'+esc(m.pt)+'</span>':'')+(m.showHint&&m.hint?'<span class="pt">Você pode dizer:</span><span class="en" lang="en">'+esc(m.hint)+'</span>':'')+
       '<div class="tools">'+(canSpeak()?'<button data-m="say" data-k="'+k+'">Ouvir</button>':'')+(m.pt&&!m.showPt?'<button data-m="pt" data-k="'+k+'">Traduzir</button>':'')+(lastAi&&m.hint&&!m.showHint?'<button data-m="hint" data-k="'+k+'">Não sei o que dizer</button>':'')+'</div></div>';
   }).join('');
   if(chat.busy)h+='<div class="typing">digitando…</div>';
@@ -949,17 +985,50 @@ function renderChat(){
   if(chat.err)h+='<p class="note">'+esc(chat.err)+'</p>';
   $('#log').innerHTML=h;
   $('#composer').classList.toggle('hidden',!(on&&deps.isAuthed()&&chat.scen));
-  if(on){const m=$('#v-chat');m.scrollTop=m.scrollHeight}
+  if(on&&selected){const m=$('#v-chat');m.scrollTop=m.scrollHeight}
 }
+
+function conversationChoices(){
+  const pills=interview=>SCEN.filter(scene=>Boolean(scene.interview)===interview).map(scene=>{
+    const locked=scene.xp&&S.xp<scene.xp&&!(deps.quota()||{}).admin;
+    return locked
+      ? '<button class="pill lockd" data-lockscen="'+scene.id+'" title="Libera em '+esc(rankForXp(scene.xp))+'">'+ic('lock')+' '+esc(scene.t)+'</button>'
+      : '<button class="pill" data-scen="'+scene.id+'">'+esc(scene.t)+'</button>';
+  }).join('');
+  return `<div class="chat-paths">
+    <section aria-labelledby="chat-work">
+      <h2 id="chat-work">Praticar situações de trabalho</h2>
+      <p>Responda por texto ou voz. A IA faz o papel de um colega e sugere formas mais naturais de falar inglês.</p>
+      <div class="chat-scenarios">${pills(false)}</div>
+    </section>
+    <section aria-labelledby="chat-interviews">
+      <h2 id="chat-interviews">Preparar entrevistas internacionais</h2>
+      <p>Treine etapas de um processo seletivo por área, da conversa com o recrutador à entrevista técnica. O simulador dá feedback e gera um relatório.</p>
+      ${deps.open?'<button class="btn" data-panel="interview">Abrir simulador de entrevistas</button>':''}
+      <div class="chat-scenarios" role="group" aria-label="Conversas curtas sobre carreira">${pills(true)}</div>
+    </section>
+  </div>${deps.open?'<button class="linkbtn" data-panel="tools">Abrir corretor de mensagens</button>':''}
+    ${deps.isAuthed()?'':'<button class="btn alt" data-login="1">Entrar grátis para conversar</button>'}`;
+}
+
 $('#v-chat').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.login){deps.login();return}
+  if(b.hasAttribute('data-chat-end')){
+    if(chat.busy)return;
+    stopAudio();
+    if(listening&&dict)dict.stop().catch(()=>{});
+    chat={scen:null,msgs:[],items:[],busy:false,err:''};
+    renderChat();
+    $('.chat-title').focus();
+    return;
+  }
   if(b.dataset.voice){
     if(!dict){chat.err='Seu navegador não reconhece voz. No celular, use o Chrome.';renderChat();return}
     voiceMode=!voiceMode;
     if(!voiceMode){stopAudio();if(listening)dict.stop()}
     renderChat();
-    if(voiceMode){const last=chat.items[chat.items.length-1];if(last&&last.who==='ai')speak(last.reply,false,()=>setTimeout(listenForReply,250));else if(!chat.scen)startScen('recruiter')}
+    if(voiceMode){const last=chat.items[chat.items.length-1];if(last&&last.who==='ai')speakChatReply(last.reply)}
     return;
   }
   if(b.dataset.lockscen){const sc=SCEN.find(x=>x.id===b.dataset.lockscen);if(sc)toast(ic('lock')+' <b>'+esc(sc.t)+'</b> libera na patente '+esc(rankForXp(sc.xp))+' ('+sc.xp+' xp)');return}
@@ -980,7 +1049,7 @@ root.addEventListener('click',e=>{
   if(e.target.closest('[data-emoji]'))startEmoji();
 });
 root.addEventListener('click',e=>{
-  const pn=e.target.closest('[data-panel]');if(pn&&deps.open){e.preventDefault();try{deps.track('tool_open',pn.dataset.panel.split(':')[0])}catch(err){}deps.open(pn.dataset.panel);return}
+  const pn=e.target.closest('[data-panel]');if(pn&&deps.open){e.preventDefault();stopAudio();try{deps.track('tool_open',pn.dataset.panel.split(':')[0])}catch(err){}deps.open(pn.dataset.panel);return}
   const pl=e.target.closest('[data-placement]');if(pl){e.preventDefault();startPlacement()}
 });
 root.addEventListener('click',e=>{const b=e.target.closest('[data-login]');if(b&&!b.closest('#log')){e.preventDefault();deps.login()}});
@@ -1652,6 +1721,25 @@ function resumePractice(target: LoginTarget) {
   }
 }
 
+function conversationCard(){
+  const account=deps.conversationAccount?.();
+  if(!account||practiceAccess()!=='member')return '';
+  const suggestion=conversationSuggestion(S.chats||0,conversationLastInteraction(account));
+  if(!suggestion)return '';
+  const scene=SCEN.find(item=>item.id===suggestion.scenario);
+  if(!scene)return '';
+  return `<section class="conversation-card" aria-labelledby="conversation-card-title">
+    <div>
+      <h2 id="conversation-card-title">${suggestion.first?'Sua primeira conversa com IA':'Conversa com IA: '+esc(scene.t)}</h2>
+      <p>${suggestion.first?'Simule uma daily em inglês por texto ou voz. A IA faz o papel de um colega e ajuda você a responder.':esc(scene.practice)}</p>
+    </div>
+    <div class="conversation-actions">
+      <button class="btn" data-conversation-start="${scene.id}">${suggestion.first?'Simular uma daily':'Treinar '+esc(scene.t)} ${ARROW}</button>
+      <button class="linkbtn" data-conversation-dismiss>Agora não</button>
+    </div>
+  </section>`;
+}
+
 function renderBoard(){
   updateHeader();
   const ol=openLv();if(boardW===null||boardW>LEVELS.length-1)boardW=ol;
@@ -1683,7 +1771,8 @@ function renderBoard(){
   const nextTiles = w === ol ? tiles : worldTiles(ol);
   const next = startedTrail || S.board[workoutId] ? nextTiles[curIndex(nextTiles)] : null;
   const remaining = practiceAccess() === 'guest' ? guestRemaining(readGuestPractice()) : null;
-  $('#v-board').innerHTML = `<div class="practice-heading"><h1>Seu treino</h1>${rankHud()}</div>
+  $('#v-board').innerHTML = `<div class="practice-heading"><h1 tabindex="-1">Seu treino</h1>${rankHud()}</div>
+    ${conversationCard()}
     <div class="practice-grid">
       ${todayCard(workoutId, next, remaining)}
       <section class="world-panel${mapOpen ? ' expanded' : ''}" aria-labelledby="world-name">
@@ -1773,6 +1862,19 @@ function playTile(t){
   if(t.k==='quiz'||t.k==='sprint'||t.k==='rev'||t.k==='chefe')startBoardQuiz(t.w,t);
 }
 $('#v-board').addEventListener('click',e=>{
+  const conversation=e.target.closest('[data-conversation-start]');
+  if(conversation){
+    showTab('chat');
+    startScen(conversation.dataset.conversationStart);
+    $('.chat-title').focus({preventScroll:true});
+    return;
+  }
+  if(e.target.closest('[data-conversation-dismiss]')){
+    markConversationInteraction();
+    renderBoard();
+    $('.practice-heading h1').focus({preventScroll:true});
+    return;
+  }
   const toggle=e.target.closest('[data-map-toggle]');
   if(toggle){
     mapOpen=!mapOpen;
@@ -2108,13 +2210,13 @@ const acctLabel=()=>{const a=$('#acct');if(!a)return;const l=deps.accountLabel()
 $('#acct').addEventListener('click',()=>deps.account());
 acctLabel();
 return {
-  destroy(){root.removeEventListener('click',onShareClick);achievementShare.destroy();clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);deviceTheme.removeEventListener('change',paintTheme);try{if(tbObs)tbObs.disconnect()}catch(e){}try{if(browserVoice())speechSynthesis.cancel()}catch(e){}try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
+  destroy(){root.removeEventListener('click',onShareClick);achievementShare.destroy();clearTimeout(workoutRefreshTimer);window.removeEventListener('popstate',onPop);document.removeEventListener('visibilitychange',onVis);deviceTheme.removeEventListener('change',paintTheme);try{if(tbObs)tbObs.disconnect()}catch(e){}stopAudio();try{if(dict)dict.stop()}catch(e){}root.innerHTML=''},
   resumePractice,
   startPlacement,
   getState(){return JSON.parse(JSON.stringify(S))},
   patch(p){Object.assign(S,p||{});save();renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   // Sign-out: forget this device's progress and the open conversation.
-  reset(){S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;mapOpen=false;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
+  reset(){stopAudio();S=DEF();chat={scen:null,msgs:[],items:[],busy:false,err:''};boardW=null;boardSel=null;mapOpen=false;renderBoard();renderLearn();renderHome();renderChat();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   setState(p){S=Object.assign(DEF(),p||{});checkBadges([]);renderBoard();renderLearn();renderHome();if(!$('#v-me').classList.contains('hidden'))renderMe()},
   refresh(){acctLabel();renderChat();renderHome();renderLearn();renderBoard();if(!$('#v-me').classList.contains('hidden'))renderMe()},
 }

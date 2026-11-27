@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Icon } from './Icon'
+import { createSpeechPlayer } from '../gym/speech'
 
 // Parses the JSON object a model returned, tolerating code fences or text around it.
 export function parseJson<T>(text: string): T | null {
@@ -81,34 +82,24 @@ export function NeedLogin({ text, onLogin }: { text: string; onLogin: () => void
   )
 }
 
-// Plays text with the app's natural voice (cached on the server).
-let current: HTMLAudioElement | null = null
+const interviewVoice = createSpeechPlayer(typeof Audio === 'undefined' ? null : new Audio(), () => speechSynthesis.cancel())
+
 export function stopVoice() {
-  if (current) {
-    current.pause()
-    current = null
-  }
+  interviewVoice.stop()
 }
-export async function playVoice(tts: ((a: { text: string; lang: 'pt' | 'en' }) => Promise<{ ok: boolean; url?: string }>) | null, text: string) {
-  stopVoice()
-  if (tts) {
-    try {
-      const r = await tts({ text: text.slice(0, 600), lang: 'en' })
-      if (r.ok && r.url) {
-        current = new Audio(r.url)
-        await current.play()
-        return
-      }
-    } catch {
-      /* fall back to the browser voice */
-    }
-  }
-  try {
-    const u = new SpeechSynthesisUtterance(text)
-    u.lang = 'en-US'
-    speechSynthesis.cancel()
-    speechSynthesis.speak(u)
-  } catch {
-    /* no voice available */
-  }
+
+export function playVoice(tts: ((a: { text: string; lang: 'pt' | 'en' }) => Promise<{ ok: boolean; url?: string }>) | null, text: string) {
+  interviewVoice.play(text, {
+    fetchUrl: tts ? async () => {
+      const result = await tts({ text: text.slice(0, 600), lang: 'en' })
+      return result.ok ? result.url : undefined
+    } : undefined,
+    fallback: typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined' ? done => {
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.lang = 'en-US'
+      utterance.onend = done
+      utterance.onerror = done
+      speechSynthesis.speak(utterance)
+    } : undefined,
+  })
 }
